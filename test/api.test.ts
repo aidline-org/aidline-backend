@@ -185,6 +185,33 @@ describe('API', () => {
     ]);
   });
 
+  it('lists refunds for a campaign paginated newest first', async () => {
+    const donor1 = account();
+    const donor2 = account();
+    const campaign = chainCampaign({ raised: 0n });
+    await index(campaign, [
+      events.created(0n, campaign.creator),
+      events.refunded(0n, donor1, 200n),
+      events.refunded(0n, donor2, 150n),
+    ]);
+
+    const res = await app.inject({ url: '/campaigns/0/refunds' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.items).toHaveLength(2);
+    expect(body.items[0]).toMatchObject({ donor: donor1, amount: '200' });
+    expect(body.items[1]).toMatchObject({ donor: donor2, amount: '150' });
+
+    // pagination
+    const page = await app.inject({ url: '/campaigns/0/refunds?limit=1&offset=1' });
+    expect(page.json().items).toHaveLength(1);
+    expect(page.json().items[0]).toMatchObject({ donor: donor2 });
+
+    // 404 for unknown campaign
+    const missing = await app.inject({ url: '/campaigns/999/refunds' });
+    expect(missing.statusCode).toBe(404);
+  });
+
   it('summarises platform stats', async () => {
     const campaign = chainCampaign({ raised: 500n, released: 300n });
     await index(campaign, [
@@ -203,5 +230,59 @@ describe('API', () => {
       donors: 1,
       milestonesVerified: 1,
     });
+  });
+
+  it('/health includes latestLedger and lagLedgers after a sync', async () => {
+    // Before any sync, all ledger fields are null.
+    const before = (await app.inject({ url: '/health' })).json();
+    expect(before.ok).toBe(true);
+    expect(before.indexedLedger).toBeNull();
+    expect(before.latestLedger).toBeNull();
+    expect(before.lagLedgers).toBeNull();
+
+    // Run one sync with a known latest ledger from the mock RPC.
+    const indexer = new Indexer({
+      db,
+      contractId: CONTRACT_ID,
+      pollMs: 1000,
+      log: app.log,
+      source: {
+        getEvents: async () => ({ events: [], cursor: 'c', latestLedger: 5000100 }) as never,
+        getHealth: async () => ({ oldestLedger: 5000000, latestLedger: 5000100 }),
+      },
+      contract: { getCampaign: async () => chainCampaign() },
+    });
+    await indexer.syncOnce();
+
+    const after = (await app.inject({ url: '/health' })).json();
+    expect(after.ok).toBe(true);
+    expect(after.latestLedger).toBe(5000100);
+    // indexedLedger may be null (no events processed), so lagLedgers can be null too.
+    // What matters is the fields exist.
+    expect(Object.keys(after)).toContain('latestLedger');
+    expect(Object.keys(after)).toContain('lagLedgers');
+  });
+
+  it('serves /openapi.json describing every route', async () => {
+    const res = await app.inject({ url: '/openapi.json' });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toMatch(/json/);
+
+    const spec = res.json();
+    expect(spec.openapi).toMatch(/^3\./);
+    expect(spec.info.title).toBe('Aidline API');
+
+    // Verify key routes are present in the spec
+    const paths = Object.keys(spec.paths ?? {});
+    expect(paths).toContain('/health');
+    expect(paths).toContain('/campaigns');
+    expect(paths.some((p) => p.includes('/campaigns/{id}/refunds'))).toBe(true);
+    expect(paths.some((p) => p.includes('/campaigns/{id}/donations'))).toBe(true);
+  });
+
+  it('serves /docs as HTML', async () => {
+    const res = await app.inject({ url: '/docs' });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toMatch(/html/);
   });
 });

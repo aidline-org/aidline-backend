@@ -158,4 +158,29 @@ describe('Full-text search (?q=)', () => {
     const res = await app.inject({ url: '/campaigns?q=\' OR 1=1 -- \\\\ " !! ()' });
     expect(res.statusCode).toBe(200);
   });
+
+  it('?q=haiti matches campaigns by location case-insensitively', async () => {
+    await createCampaign(0n, {
+      title: 'Clean water after flooding',
+      location: 'Les Cayes, Haiti',
+    });
+    await createCampaign(1n, { title: 'Drought fund', location: 'Kenya' });
+
+    const res = await app.inject({ url: '/campaigns?q=haiti' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.total).toBe(1);
+    expect(body.items[0].metadata.location).toMatch(/Haiti/i);
+  });
+
+  it('?q= combines with kind filter', async () => {
+    await createCampaign(0n, { title: 'Flood relief Haiti' });
+    await db.query(`UPDATE campaigns SET kind = 'emergency' WHERE id = '0'`);
+    await createCampaign(1n, { title: 'Flood relief Kenya' });
+    await db.query(`UPDATE campaigns SET kind = 'climate' WHERE id = '1'`);
+
+    const res = await app.inject({ url: '/campaigns?q=flood&kind=emergency' });
+    expect(res.json().total).toBe(1);
+    expect(res.json().items[0].id).toBe('0');
+  });
 });

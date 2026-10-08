@@ -6,6 +6,8 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import Fastify, { type FastifyServerOptions } from 'fastify';
 import { ZodError } from 'zod';
 
@@ -38,6 +40,34 @@ export async function buildApp(
   await app.register(cors, { origin: config.corsOrigins });
   await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
   await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024, files: 5 } });
+
+  // OpenAPI spec — register before routes so all of them are picked up.
+  await app.register(swagger, {
+    openapi: {
+      info: {
+        title: 'Aidline API',
+        description:
+          'API and Soroban event indexer for Aidline — transparent funding for disaster relief and climate action.',
+        version: '0.1.0',
+      },
+      servers: [{ url: config.PUBLIC_BASE_URL }],
+      tags: [
+        { name: 'platform', description: 'Health, config and aggregate statistics' },
+        { name: 'campaigns', description: 'Campaign listings and per-campaign data' },
+        { name: 'metadata', description: 'Off-chain campaign metadata' },
+        { name: 'releases', description: 'Milestone payout history' },
+        { name: 'proofs', description: 'Verifier evidence uploads' },
+        { name: 'verifiers', description: 'Verifier profiles and applications' },
+        { name: 'donors', description: 'Donor profiles and donation history' },
+      ],
+    },
+  });
+
+  // Interactive reference UI served at /docs
+  await app.register(swaggerUi, {
+    routePrefix: '/docs',
+    uiConfig: { docExpansion: 'list', deepLinking: false },
+  });
 
   const uploadRoot = resolve(config.UPLOAD_DIR);
   mkdirSync(uploadRoot, { recursive: true });

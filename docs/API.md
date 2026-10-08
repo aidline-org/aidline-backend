@@ -16,9 +16,21 @@ Errors share one shape:
 
 ## Platform
 
+### `GET /openapi.json`
+
+Returns the OpenAPI 3.0 specification document describing every route in the API. Useful for generating client SDKs or importing into tools like Insomnia or Postman.
+
+### `GET /docs`
+
+Renders an interactive Swagger UI reference for the API. Navigate here in a browser to explore and try out every endpoint without any extra tooling.
+
 ### `GET /health`
 
-`{ "ok": true, "indexedLedger": 4993748 }`
+```json
+{ "ok": true, "indexedLedger": 4993748, "latestLedger": 4993760, "lagLedgers": 12 }
+```
+
+`latestLedger` is the most recent ledger seen from the network on the last sync. `lagLedgers` is the difference between `latestLedger` and `indexedLedger`. Both are `null` before the first sync completes.
 
 ### `GET /config`
 
@@ -123,6 +135,30 @@ The same fields, plus `metadata.description` and a milestone timeline:
 ### `GET /campaigns/:id/donations`
 
 Paginated `{ items: [{ donor, amount, txHash, createdAt }] }`, newest first.
+
+### `GET /campaigns/:id/refunds`
+
+Returns paginated refunds for a campaign, newest first.
+
+Query: `limit` (max 100, default 20), `offset`.
+
+```json
+{
+  "items": [
+    {
+      "donor": "G...",
+      "amount": "500000000",
+      "txHash": "abc123...",
+      "createdAt": "2026-10-01T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+| Status | body `error`       | Condition                          |
+| ------ | ------------------ | ---------------------------------- |
+| 404    | `not_found`        | Campaign id does not exist         |
+| 400    | `validation_error` | Campaign id is not a valid integer |
 
 ### `GET /campaigns/:id/export.csv`
 
