@@ -124,6 +124,30 @@ The same fields, plus `metadata.description` and a milestone timeline:
 
 Paginated `{ items: [{ donor, amount, txHash, createdAt }] }`, newest first.
 
+### `GET /campaigns/:id/refunds`
+
+Returns paginated refunds for a campaign, newest first.
+
+Query: `limit` (max 100, default 20), `offset`.
+
+```json
+{
+  "items": [
+    {
+      "donor": "G...",
+      "amount": "500000000",
+      "txHash": "abc123...",
+      "createdAt": "2026-10-01T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+| Status | body `error`       | Condition                          |
+| ------ | ------------------ | ---------------------------------- |
+| 404    | `not_found`        | Campaign id does not exist         |
+| 400    | `validation_error` | Campaign id is not a valid integer |
+
 ### `GET /campaigns/:id/export.csv`
 
 Returns a CSV file containing the complete financial activity for a campaign: donations, milestone releases, and refunds.

@@ -14,8 +14,7 @@ const listQuery = pagination.extend({
   status: z.enum(['active', 'completed', 'cancelled', 'expired']).optional(),
   creator: z.string().optional(),
   verifier: z.string().optional(),
-  q: z.string().optional(),
-  // #2 – full‑text search across title and location (via tsvector added in migration 003)
+  // #2 – full-text search across title, summary, location and organizer
   q: z.string().trim().min(1).optional(),
   // #9 – sort order
   sort: z.enum(['newest', 'ending_soon', 'most_funded']).default('newest'),
@@ -80,24 +79,23 @@ export async function campaignRoutes(app: FastifyInstance) {
     if (q.creator) add('c.creator = ?', q.creator);
     if (q.verifier) add('c.verifier = ?', q.verifier);
 
-    // Full-text search via the stored tsvector column (Issue #26).
-    // When q.q is blank we skip the clause entirely so existing filters work unchanged.
-    if (q.q && q.q.trim().length > 0) {
-      params.push(q.q.trim());
-      where.push(`m.search_vector @@ websearch_to_tsquery('english', $${params.length})`);
+    // #2 – full-text search across title, summary, location and organizer via the
+    // stored tsvector column. When q.q is blank we skip the clause entirely so
+    // existing filters work unchanged.
+    let searchParamIndex: number | null = null;
+    if (q.q) {
+      params.push(q.q);
+      searchParamIndex = params.length;
+      where.push(`m.search_vector @@ websearch_to_tsquery('english', $${searchParamIndex})`);
     }
-    // #2 – search by title or location via the tsvector column
-    if (q.q) add(`m.search_vec @@ plainto_tsquery('english', ?)`, q.q);
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const orderSql = SORT_MAP[q.sort];
 
     // When a full-text search term is present, rank by relevance first; otherwise
-    // preserve the existing newest-first ordering.
-    const orderBy =
-      q.q && q.q.trim().length > 0
-        ? `ts_rank(m.search_vector, websearch_to_tsquery('english', ${(() => { params.push(q.q.trim()); return `$${params.length}`; })()})) DESC, c.created_at DESC`
-        : 'c.created_at DESC';
+    // use the requested sort order.
+    const orderBy = searchParamIndex
+      ? `ts_rank(m.search_vector, websearch_to_tsquery('english', $${searchParamIndex})) DESC, c.created_at DESC`
+      : SORT_MAP[q.sort];
 
     params.push(q.limit, q.offset);
     const { rows } = await app.db.query(
@@ -105,7 +103,6 @@ export async function campaignRoutes(app: FastifyInstance) {
        FROM campaigns c LEFT JOIN campaign_metadata m ON m.id = c.metadata_id
        ${whereSql}
        ORDER BY ${orderBy}
-       ORDER BY ${orderSql}
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
@@ -258,7 +255,9 @@ export async function campaignRoutes(app: FastifyInstance) {
       .header('Content-Type', 'text/csv; charset=utf-8')
       .header('Content-Disposition', `attachment; filename="campaign-${id.toString()}.csv"`)
       .send(csv);
-  // #1 – list refunds for a campaign
+  });
+
+  // #1 – list refunds for a campaign, newest first
   app.get('/campaigns/:id/refunds', async (req, reply) => {
     const { id } = z.object({ id: z.coerce.bigint() }).parse(req.params);
     const q = pagination.parse(req.query);
