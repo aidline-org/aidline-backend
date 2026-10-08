@@ -18,7 +18,11 @@ Errors share one shape:
 
 ### `GET /health`
 
-`{ "ok": true, "indexedLedger": 4993748 }`
+```json
+{ "ok": true, "indexedLedger": 4993748, "latestLedger": 4993760, "lagLedgers": 12 }
+```
+
+`latestLedger` is the most recent ledger seen from the network on the last sync. `lagLedgers` is the difference between `latestLedger` and `indexedLedger`. Both are `null` before the first sync completes.
 
 ### `GET /config`
 
