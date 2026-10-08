@@ -14,14 +14,14 @@ const listQuery = pagination.extend({
   status: z.enum(['active', 'completed', 'cancelled', 'expired']).optional(),
   creator: z.string().optional(),
   verifier: z.string().optional(),
-  // #2 – full-text search across title, summary, location and organizer
+  // #2: full-text search across title, summary, location and organizer
   // A blank search is treated as no search.
   q: z
     .string()
     .trim()
     .optional()
     .transform((v) => v || undefined),
-  // #9 – sort order
+  // #9: sort order
   sort: z.enum(['newest', 'ending_soon', 'most_funded']).default('newest'),
 });
 
@@ -84,7 +84,7 @@ export async function campaignRoutes(app: FastifyInstance) {
     if (q.creator) add('c.creator = ?', q.creator);
     if (q.verifier) add('c.verifier = ?', q.verifier);
 
-    // #2 – full-text search across title, summary, location and organizer via the
+    // #2: full-text search across title, summary, location and organizer via the
     // stored tsvector column. When q.q is blank we skip the clause entirely so
     // existing filters work unchanged.
     let searchParamIndex: number | null = null;
@@ -174,7 +174,7 @@ export async function campaignRoutes(app: FastifyInstance) {
    *
    * Columns: type, createdAt, campaignId, actor, amount, milestoneIndex, txHash, eventId
    *
-   * Amounts are returned as-is from NUMERIC(39,0) columns — i.e., exact integer
+   * Amounts are returned as-is from NUMERIC(39,0) columns, i.e., exact integer
    * strings in the token's smallest unit (stroops) with no floating-point conversion.
    *
    * Ordering: chronological (created_at ASC), with event_id as a tie-breaker.
@@ -262,7 +262,7 @@ export async function campaignRoutes(app: FastifyInstance) {
       .send(csv);
   });
 
-  // #1 – list refunds for a campaign, newest first
+  // #1: list refunds for a campaign, newest first
   app.get('/campaigns/:id/refunds', async (req, reply) => {
     const { id } = z.object({ id: z.coerce.bigint() }).parse(req.params);
     const q = pagination.parse(req.query);

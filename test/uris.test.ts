@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { metadataIdFromUri, proofIdFromUri } from '../src/lib/uris.js';
 
-// #14 – unit tests for URI helpers
+// #14: unit tests for URI helpers
 
 const UUID = '550e8400-e29b-41d4-a716-446655440000';
 

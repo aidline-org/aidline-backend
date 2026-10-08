@@ -8,8 +8,8 @@
 -- UTC avoids ambiguity from daylight-saving transitions and is consistent with
 -- the ISO 8601 timestamps already used everywhere else in the schema.
 --
--- Financial amounts are NUMERIC(39,0) — the same type as campaigns.raised /
--- donations.amount — so they can hold full i128 Soroban token values without
+-- Financial amounts are NUMERIC(39,0), the same type as campaigns.raised /
+-- donations.amount, so they can hold full i128 Soroban token values without
 -- loss of precision.  Floating-point types are intentionally not used.
 --
 -- Idempotency: the UNIQUE constraint on `snapshot_date` makes it impossible to
@@ -32,4 +32,4 @@ CREATE TABLE daily_stats_snapshots (
 
 -- The primary key already creates a unique index on snapshot_date.
 -- An additional index is not needed for the /stats/history query which reads
--- all rows ordered by snapshot_date — the PK index handles that efficiently.
+-- all rows ordered by snapshot_date, the PK index handles that efficiently.

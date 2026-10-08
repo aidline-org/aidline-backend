@@ -1,7 +1,7 @@
--- #23 – track the chain's latest ledger so the health endpoint can report lag
+-- #23: track the chain's latest ledger so the health endpoint can report lag
 ALTER TABLE indexer_state ADD COLUMN IF NOT EXISTS latest_ledger INTEGER;
 
--- #25 – daily stats snapshot table for chart history
+-- #25: daily stats snapshot table for chart history
 CREATE TABLE IF NOT EXISTS daily_stats (
   date           DATE        PRIMARY KEY,
   campaigns      INTEGER     NOT NULL DEFAULT 0,
@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS daily_stats (
   "totalReleased" NUMERIC(39,0) NOT NULL DEFAULT 0
 );
 
--- #26 – full-text search vector on campaign_metadata (title + location)
+-- #26: full-text search vector on campaign_metadata (title + location)
 ALTER TABLE campaign_metadata
   ADD COLUMN IF NOT EXISTS search_vec TSVECTOR
   GENERATED ALWAYS AS (

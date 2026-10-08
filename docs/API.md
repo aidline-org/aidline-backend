@@ -188,7 +188,7 @@ Returns a CSV file containing the complete financial activity for a campaign: do
 
 **Amounts**: stored as `NUMERIC(39,0)` and returned as exact integer strings. They never pass through a JavaScript number, so large i128 token values are preserved without rounding or scientific notation.
 
-**Authentication**: none — follows the same open access model as all other read endpoints.
+**Authentication**: none, follows the same open access model as all other read endpoints.
 
 **Errors**
 

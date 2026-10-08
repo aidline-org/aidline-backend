@@ -10,7 +10,7 @@ import { AidlineContract } from './stellar/contract.js';
 
 const config = loadConfig();
 
-// #15 – retry the database connection at boot with exponential back-off
+// #15: retry the database connection at boot with exponential back-off
 async function connectWithRetry(url: string, maxAttempts = 10, baseMs = 1000) {
   let attempt = 0;
   while (true) {

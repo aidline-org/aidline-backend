@@ -60,7 +60,7 @@ export interface IndexerOptions {
  * error.  When that happens `syncOnce` catches the error, logs the gap clearly,
  * re-fetches current contract state for every known campaign, resets the cursor
  * to the oldest ledger the RPC still holds, and resumes normal incremental
- * indexing from there — all without operator intervention.
+ * indexing from there, all without operator intervention.
  */
 export class Indexer {
   private timer: NodeJS.Timeout | null = null;
@@ -178,7 +178,7 @@ export class Indexer {
 
     log.warn(
       { expiredCursor },
-      'indexer cursor has fallen out of RPC retention — starting gap recovery',
+      'indexer cursor has fallen out of RPC retention, starting gap recovery',
     );
 
     // Step 1: Find the oldest available ledger.
@@ -233,7 +233,7 @@ export class Indexer {
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK');
-      // Do not touch the stored cursor on failure — let the next poll retry recovery.
+      // Do not touch the stored cursor on failure, let the next poll retry recovery.
       log.error({ err }, 'gap recovery failed; cursor has not been reset');
       throw err;
     } finally {
@@ -242,7 +242,7 @@ export class Indexer {
 
     log.warn(
       { oldestLedger, campaignsResynchronised: knownCampaigns.length },
-      'gap recovery complete — indexer will resume from oldest available ledger',
+      'gap recovery complete, indexer will resume from oldest available ledger',
     );
   }
 

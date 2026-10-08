@@ -151,7 +151,7 @@ describe('Indexer', () => {
 
       const logSpy = vi.spyOn(app.log, 'warn');
       const indexer = indexerFor(chain);
-      // syncOnce should NOT throw — it catches and recovers
+      // syncOnce should NOT throw, it catches and recovers
       const count = await indexer.syncOnce();
       expect(count).toBe(0);
 
@@ -197,7 +197,7 @@ describe('Indexer', () => {
         );
         chain.nextError = new Error(phrase);
         const indexer = indexerFor(chain);
-        // Should not throw — recovery is triggered
+        // Should not throw, recovery is triggered
         await expect(indexer.syncOnce()).resolves.toBe(0);
         // Cursor cleared
         const s = await db.query('SELECT cursor FROM indexer_state WHERE id = 1');
@@ -237,7 +237,7 @@ describe('Indexer', () => {
       const indexer = indexerFor(chain);
       await indexer.syncOnce(); // triggers recovery, clears cursor
 
-      // Second syncOnce — no error this time, empty page
+      // Second syncOnce, no error this time, empty page
       chain.pages.push([]);
       await indexer.syncOnce();
 

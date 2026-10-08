@@ -4,7 +4,7 @@ import type { Db } from '../db/pool.js';
  * Represents the shape of one daily snapshot row, as returned by
  * `snapshotStats` and by `GET /stats/history`.
  *
- * Financial amounts are strings — `NUMERIC(39,0)` values from Postgres are
+ * Financial amounts are strings, `NUMERIC(39,0)` values from Postgres are
  * returned as strings by the type parsers in `db/pool.ts` so they never pass
  * through a JS number.
  */
@@ -64,7 +64,7 @@ export async function snapshotStats(db: Db, date?: string): Promise<boolean> {
 /**
  * Returns all daily snapshots ordered chronologically (oldest first).
  *
- * Reading stored snapshots is intentionally cheap — no aggregation is done at
+ * Reading stored snapshots is intentionally cheap, no aggregation is done at
  * query time.
  */
 export async function getStatsHistory(db: Db): Promise<DailySnapshot[]> {
@@ -110,7 +110,7 @@ export async function getStatsHistory(db: Db): Promise<DailySnapshot[]> {
  * The scheduler does not install any new dependency.
  *
  * @param db  Postgres pool.
- * @param log Logger (Fastify-compatible — exposes .info / .warn / .error).
+ * @param log Logger (Fastify-compatible, exposes .info / .warn / .error).
  */
 export function startDailySnapshotScheduler(
   db: Db,

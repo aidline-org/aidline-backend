@@ -94,7 +94,7 @@ describe('GET /campaigns/:id/export.csv', () => {
     const c0 = chainCampaign({ id: 0n, raised: 100n });
     const c1 = chainCampaign({ id: 1n, raised: 200n });
     await index(c0, [events.created(0n, c0.creator), events.donated(0n, account(), 100n)]);
-    // Re-index for campaign 1 — the fake contract always returns c1 for any id
+    // Re-index for campaign 1, the fake contract always returns c1 for any id
     const pages1 = [[events.created(1n, c1.creator), events.donated(1n, account(), 200n)]];
     const indexer1 = new Indexer({
       db,
@@ -148,7 +148,7 @@ describe('GET /campaigns/:id/export.csv', () => {
     const lines = res.body.split('\r\n').filter((l) => l.length > 0);
     // Each data line must have exactly 7 commas (8 columns)
     for (const line of lines) {
-      // Count unquoted commas vs total — simpler check: split by comma for header
+      // Count unquoted commas vs total, simpler check: split by comma for header
       if (line === 'type,createdAt,campaignId,actor,amount,milestoneIndex,txHash,eventId') continue;
       const cols = line.split(',');
       expect(cols.length).toBeGreaterThanOrEqual(8);

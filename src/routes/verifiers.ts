@@ -48,7 +48,7 @@ export async function verifierRoutes(app: FastifyInstance) {
     return reply.code(201).send({ address: a.address, status: 'pending_review' });
   });
 
-  // #12 – list campaigns a verifier oversees
+  // #12: list campaigns a verifier oversees
   app.get('/verifiers/:address/campaigns', async (req) => {
     const { address } = z.object({ address: stellarAddress }).parse(req.params);
     const { rows } = await app.db.query(

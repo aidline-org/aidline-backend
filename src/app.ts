@@ -41,13 +41,13 @@ export async function buildApp(
   await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
   await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024, files: 5 } });
 
-  // OpenAPI spec — register before routes so all of them are picked up.
+  // OpenAPI spec, register before routes so all of them are picked up.
   await app.register(swagger, {
     openapi: {
       info: {
         title: 'Aidline API',
         description:
-          'API and Soroban event indexer for Aidline — transparent funding for disaster relief and climate action.',
+          'API and Soroban event indexer for Aidline, transparent funding for disaster relief and climate action.',
         version: '0.1.0',
       },
       servers: [{ url: config.PUBLIC_BASE_URL }],
@@ -92,12 +92,12 @@ export async function buildApp(
     });
   });
 
-  // #10 – consistent JSON 404 for unknown routes
+  // #10: consistent JSON 404 for unknown routes
   app.setNotFoundHandler((_req, reply) => {
     return reply.code(404).send({ error: 'not_found', message: 'Route not found' });
   });
 
-  // #11 – attach a unique X-Request-Id header to every response
+  // #11: attach a unique X-Request-Id header to every response
   app.addHook('onSend', (_req, reply, _payload, done) => {
     if (!reply.hasHeader('x-request-id')) {
       reply.header('x-request-id', randomUUID());
