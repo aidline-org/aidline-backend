@@ -159,17 +159,17 @@ describe('Indexer', () => {
       const state = await db.query<{ cursor: string | null; last_ledger: number }>(
         'SELECT cursor, last_ledger FROM indexer_state WHERE id = 1',
       );
-      expect(state.rows[0].cursor).toBeNull();
+      expect(state.rows[0]!.cursor).toBeNull();
       // last_ledger should be the oldest available ledger from getHealth (50)
-      expect(state.rows[0].last_ledger).toBe(50);
+      expect(state.rows[0]!.last_ledger).toBe(50);
 
       // Campaign totals must be updated from the contract
       const row = await db.query<{ raised: string; released: string }>(
         'SELECT raised, released FROM campaigns WHERE id = $1',
         ['0'],
       );
-      expect(row.rows[0].raised).toBe('800');
-      expect(row.rows[0].released).toBe('200');
+      expect(row.rows[0]!.raised).toBe('800');
+      expect(row.rows[0]!.released).toBe('200');
 
       // Gap must be logged
       expect(logSpy).toHaveBeenCalledWith(
@@ -201,7 +201,7 @@ describe('Indexer', () => {
         await expect(indexer.syncOnce()).resolves.toBe(0);
         // Cursor cleared
         const s = await db.query('SELECT cursor FROM indexer_state WHERE id = 1');
-        expect(s.rows[0].cursor).toBeNull();
+        expect(s.rows[0]!.cursor).toBeNull();
       }
     });
 
@@ -214,7 +214,7 @@ describe('Indexer', () => {
       await expect(indexer.syncOnce()).rejects.toThrow('unauthorized');
       // Cursor must not have been modified
       const s = await db.query('SELECT cursor FROM indexer_state WHERE id = 1');
-      expect(s.rows[0].cursor).toBe('cur');
+      expect(s.rows[0]!.cursor).toBe('cur');
     });
 
     it('does NOT trigger recovery when there is no stored cursor yet', async () => {
@@ -320,7 +320,7 @@ describe('Indexer', () => {
 
       // Cursor must not have been cleared
       const s = await db.query('SELECT cursor FROM indexer_state WHERE id = 1');
-      expect(s.rows[0].cursor).toBe('stale');
+      expect(s.rows[0]!.cursor).toBe('stale');
     });
   });
 });

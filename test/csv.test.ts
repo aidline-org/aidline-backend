@@ -187,11 +187,11 @@ describe('GET /campaigns/:id/export.csv', () => {
     // All rows must have a parseable ISO timestamp in column 1
     const timestamps = lines.map((l) => {
       const cols = l.split(',');
-      return new Date(cols[1]).getTime();
+      return new Date(cols[1] ?? '').getTime();
     });
     // Each timestamp must be >= the previous
     for (let i = 1; i < timestamps.length; i++) {
-      expect(timestamps[i]).toBeGreaterThanOrEqual(timestamps[i - 1]);
+      expect(timestamps[i]).toBeGreaterThanOrEqual(timestamps[i - 1]!);
     }
   });
 });

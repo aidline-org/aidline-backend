@@ -4,7 +4,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/pool.js';
 import { Indexer } from '../src/indexer/indexer.js';
 import type { ChainCampaign } from '../src/stellar/contract.js';
-import { account, chainCampaign, CONTRACT_ID, events, resetDb, setupApp } from './helpers.js';
+import { chainCampaign, CONTRACT_ID, events, resetDb, setupApp } from './helpers.js';
 
 const { app, db } = (await setupApp()) as { app: FastifyInstance; db: Db };
 
@@ -33,7 +33,7 @@ describe('Full-text search (?q=)', () => {
     await db.end();
   });
 
-  async function createCampaign(id: bigint, metaOverride: any) {
+  async function createCampaign(id: bigint, metaOverride: Record<string, unknown>) {
     const meta = (
       await app.inject({
         method: 'POST',
@@ -121,8 +121,9 @@ describe('Full-text search (?q=)', () => {
   });
 
   it('ignores empty query and returns all', async () => {
-    await createCampaign(0n, { title: 'One' });
-    await createCampaign(1n, { title: 'Two' });
+    // Titles must meet the API minimum of 5 characters.
+    await createCampaign(0n, { title: 'First campaign' });
+    await createCampaign(1n, { title: 'Second campaign' });
     const res = await app.inject({ url: '/campaigns?q=   ' });
     expect(res.json().total).toBe(2);
   });

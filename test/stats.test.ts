@@ -92,7 +92,9 @@ describe('Daily stats history', () => {
 
     expect(body.items).toHaveLength(3);
 
-    const dates = body.items.map((item: any) => new Date(item.snapshotDate).getTime());
+    const dates = body.items.map((item: { snapshotDate: string }) =>
+      new Date(item.snapshotDate).getTime(),
+    );
 
     // Verify sorting (oldest to newest)
     expect(dates[0]).toBeLessThan(dates[1]);
@@ -117,6 +119,6 @@ describe('Daily stats history', () => {
     await snapshotStats(db, '2026-10-15');
 
     const history = await getStatsHistory(db);
-    expect(history[0].totalDonated).toBe(bigAmount.toString());
+    expect(history[0]!.totalDonated).toBe(bigAmount.toString());
   });
 });
