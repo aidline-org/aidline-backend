@@ -29,7 +29,7 @@ export async function setupApp() {
 
 export async function resetDb(db: Db) {
   await db.query(`TRUNCATE donations, refunds, milestone_releases, proofs, campaigns,
-    campaign_metadata, verifiers, indexer_state`);
+    campaign_metadata, verifiers, indexer_state, daily_stats_snapshots`);
 }
 
 export const account = () => Keypair.random().publicKey();
