@@ -15,7 +15,12 @@ const listQuery = pagination.extend({
   creator: z.string().optional(),
   verifier: z.string().optional(),
   // #2 – full-text search across title, summary, location and organizer
-  q: z.string().trim().min(1).optional(),
+  // A blank search is treated as no search.
+  q: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => v || undefined),
   // #9 – sort order
   sort: z.enum(['newest', 'ending_soon', 'most_funded']).default('newest'),
 });
