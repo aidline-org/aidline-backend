@@ -1,4 +1,4 @@
--- Migration 003: daily_stats_snapshots
+-- Migration 005: daily_stats_snapshots
 --
 -- Stores one row per UTC calendar day representing platform-wide totals at
 -- the time the snapshot was taken.  This is consumed by GET /stats/history.
