@@ -16,6 +16,14 @@ Errors share one shape:
 
 ## Platform
 
+### `GET /openapi.json`
+
+Returns the OpenAPI 3.0 specification document describing every route in the API. Useful for generating client SDKs or importing into tools like Insomnia or Postman.
+
+### `GET /docs`
+
+Renders an interactive Swagger UI reference for the API. Navigate here in a browser to explore and try out every endpoint without any extra tooling.
+
 ### `GET /health`
 
 ```json
