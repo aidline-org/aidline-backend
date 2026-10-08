@@ -199,13 +199,14 @@ describe('API', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.items).toHaveLength(2);
-    expect(body.items[0]).toMatchObject({ donor: donor1, amount: '200' });
-    expect(body.items[1]).toMatchObject({ donor: donor2, amount: '150' });
+    // Newest first: donor2 refunded after donor1.
+    expect(body.items[0]).toMatchObject({ donor: donor2, amount: '150' });
+    expect(body.items[1]).toMatchObject({ donor: donor1, amount: '200' });
 
     // pagination
     const page = await app.inject({ url: '/campaigns/0/refunds?limit=1&offset=1' });
     expect(page.json().items).toHaveLength(1);
-    expect(page.json().items[0]).toMatchObject({ donor: donor2 });
+    expect(page.json().items[0]).toMatchObject({ donor: donor1 });
 
     // 404 for unknown campaign
     const missing = await app.inject({ url: '/campaigns/999/refunds' });

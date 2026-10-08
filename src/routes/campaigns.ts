@@ -271,7 +271,7 @@ export async function campaignRoutes(app: FastifyInstance) {
     const { rows } = await app.db.query(
       `SELECT donor, amount, tx_hash AS "txHash", created_at AS "createdAt"
        FROM refunds WHERE campaign_id = $1
-       ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+       ORDER BY created_at DESC, event_id DESC LIMIT $2 OFFSET $3`,
       [id.toString(), q.limit, q.offset],
     );
     return { items: rows };
