@@ -63,6 +63,9 @@ export async function buildApp(
     },
   });
 
+  // Raw spec at a stable, conventional path for tools and integrators.
+  app.get('/openapi.json', { schema: { hide: true } }, async () => app.swagger());
+
   // Interactive reference UI served at /docs
   await app.register(swaggerUi, {
     routePrefix: '/docs',
