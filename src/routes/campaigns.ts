@@ -281,31 +281,4 @@ export async function campaignRoutes(app: FastifyInstance) {
     );
     return { items: rows };
   });
-
-  // #24 – CSV export of all donations for a campaign (for auditors)
-  app.get('/campaigns/:id/donations.csv', async (req, reply) => {
-    const { id } = z.object({ id: z.coerce.bigint() }).parse(req.params);
-
-    const { rows: check } = await app.db.query('SELECT 1 FROM campaigns WHERE id = $1', [
-      id.toString(),
-    ]);
-    if (!check.length) return notFound(reply, 'campaign');
-
-    const { rows } = await app.db.query(
-      `SELECT donor, amount, tx_hash, created_at
-       FROM donations WHERE campaign_id = $1
-       ORDER BY created_at ASC`,
-      [id.toString()],
-    );
-
-    const header = 'donor,amount,tx_hash,created_at\n';
-    const body = rows
-      .map((r) => `${r.donor},${r.amount},${r.tx_hash},${(r.created_at as Date).toISOString()}`)
-      .join('\n');
-
-    return reply
-      .header('Content-Type', 'text/csv; charset=utf-8')
-      .header('Content-Disposition', `attachment; filename="campaign-${id}-donations.csv"`)
-      .send(header + body);
-  });
 }
