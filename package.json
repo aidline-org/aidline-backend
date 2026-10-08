@@ -22,6 +22,8 @@
     "@fastify/multipart": "^10.1.2",
     "@fastify/rate-limit": "^11.2.0",
     "@fastify/static": "^10.1.5",
+    "@fastify/swagger": "^9.9.1",
+    "@fastify/swagger-ui": "^5.2.6",
     "@stellar/stellar-sdk": "^17.2.1",
     "fastify": "^5.12.5",
     "pg": "^8.23.1",

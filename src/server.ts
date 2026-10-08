@@ -4,7 +4,6 @@ import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
 import { migrate } from './db/migrate.js';
 import { createPool } from './db/pool.js';
-import { DailyStatsJob } from './indexer/daily-stats.js';
 import { Indexer } from './indexer/indexer.js';
 import { startDailySnapshotScheduler } from './indexer/stats.js';
 import { AidlineContract } from './stellar/contract.js';
@@ -61,13 +60,6 @@ const statsTimer = startDailySnapshotScheduler(db, app.log.child({ module: 'stat
 const shutdown = async () => {
   indexer?.stop();
   clearInterval(statsTimer);
-// #25 – start daily stats snapshot job
-const dailyStats = new DailyStatsJob(db, app.log.child({ module: 'daily-stats' }));
-dailyStats.start();
-
-const shutdown = async () => {
-  indexer?.stop();
-  dailyStats.stop();
   await app.close();
   await db.end();
   process.exit(0);
