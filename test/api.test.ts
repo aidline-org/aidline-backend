@@ -262,4 +262,27 @@ describe('API', () => {
     expect(Object.keys(after)).toContain('latestLedger');
     expect(Object.keys(after)).toContain('lagLedgers');
   });
+
+  it('serves /openapi.json describing every route', async () => {
+    const res = await app.inject({ url: '/openapi.json' });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toMatch(/json/);
+
+    const spec = res.json();
+    expect(spec.openapi).toMatch(/^3\./);
+    expect(spec.info.title).toBe('Aidline API');
+
+    // Verify key routes are present in the spec
+    const paths = Object.keys(spec.paths ?? {});
+    expect(paths).toContain('/health');
+    expect(paths).toContain('/campaigns');
+    expect(paths.some((p) => p.includes('/campaigns/{id}/refunds'))).toBe(true);
+    expect(paths.some((p) => p.includes('/campaigns/{id}/donations'))).toBe(true);
+  });
+
+  it('serves /docs as HTML', async () => {
+    const res = await app.inject({ url: '/docs' });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toMatch(/html/);
+  });
 });
