@@ -231,4 +231,35 @@ describe('API', () => {
       milestonesVerified: 1,
     });
   });
+
+  it('/health includes latestLedger and lagLedgers after a sync', async () => {
+    // Before any sync, all ledger fields are null.
+    const before = (await app.inject({ url: '/health' })).json();
+    expect(before.ok).toBe(true);
+    expect(before.indexedLedger).toBeNull();
+    expect(before.latestLedger).toBeNull();
+    expect(before.lagLedgers).toBeNull();
+
+    // Run one sync with a known latest ledger from the mock RPC.
+    const indexer = new Indexer({
+      db,
+      contractId: CONTRACT_ID,
+      pollMs: 1000,
+      log: app.log,
+      source: {
+        getEvents: async () => ({ events: [], cursor: 'c', latestLedger: 5000100 }) as never,
+        getHealth: async () => ({ oldestLedger: 5000000, latestLedger: 5000100 }),
+      },
+      contract: { getCampaign: async () => chainCampaign() },
+    });
+    await indexer.syncOnce();
+
+    const after = (await app.inject({ url: '/health' })).json();
+    expect(after.ok).toBe(true);
+    expect(after.latestLedger).toBe(5000100);
+    // indexedLedger may be null (no events processed), so lagLedgers can be null too.
+    // What matters is the fields exist.
+    expect(Object.keys(after)).toContain('latestLedger');
+    expect(Object.keys(after)).toContain('lagLedgers');
+  });
 });
