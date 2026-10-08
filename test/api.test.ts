@@ -185,6 +185,33 @@ describe('API', () => {
     ]);
   });
 
+  it('lists refunds for a campaign paginated newest first', async () => {
+    const donor1 = account();
+    const donor2 = account();
+    const campaign = chainCampaign({ raised: 0n });
+    await index(campaign, [
+      events.created(0n, campaign.creator),
+      events.refunded(0n, donor1, 200n),
+      events.refunded(0n, donor2, 150n),
+    ]);
+
+    const res = await app.inject({ url: '/campaigns/0/refunds' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.items).toHaveLength(2);
+    expect(body.items[0]).toMatchObject({ donor: donor1, amount: '200' });
+    expect(body.items[1]).toMatchObject({ donor: donor2, amount: '150' });
+
+    // pagination
+    const page = await app.inject({ url: '/campaigns/0/refunds?limit=1&offset=1' });
+    expect(page.json().items).toHaveLength(1);
+    expect(page.json().items[0]).toMatchObject({ donor: donor2 });
+
+    // 404 for unknown campaign
+    const missing = await app.inject({ url: '/campaigns/999/refunds' });
+    expect(missing.statusCode).toBe(404);
+  });
+
   it('summarises platform stats', async () => {
     const campaign = chainCampaign({ raised: 500n, released: 300n });
     await index(campaign, [
