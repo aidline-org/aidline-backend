@@ -6,6 +6,7 @@ import { migrate } from './db/migrate.js';
 import { createPool } from './db/pool.js';
 import { DailyStatsJob } from './indexer/daily-stats.js';
 import { Indexer } from './indexer/indexer.js';
+import { startDailySnapshotScheduler } from './indexer/stats.js';
 import { AidlineContract } from './stellar/contract.js';
 
 const config = loadConfig();
@@ -55,6 +56,11 @@ if (config.INDEXER_ENABLED && config.AIDLINE_CONTRACT_ID) {
   app.log.warn('indexer disabled: set AIDLINE_CONTRACT_ID to index contract events');
 }
 
+const statsTimer = startDailySnapshotScheduler(db, app.log.child({ module: 'stats' }));
+
+const shutdown = async () => {
+  indexer?.stop();
+  clearInterval(statsTimer);
 // #25 – start daily stats snapshot job
 const dailyStats = new DailyStatsJob(db, app.log.child({ module: 'daily-stats' }));
 dailyStats.start();

@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { getStatsHistory } from '../indexer/stats.js';
 import { z } from 'zod';
 
 export async function metaRoutes(app: FastifyInstance) {
@@ -39,6 +40,9 @@ export async function metaRoutes(app: FastifyInstance) {
     return rows[0];
   });
 
+  app.get('/stats/history', async () => {
+    const history = await getStatsHistory(app.db);
+    return { items: history };
   // #25 – daily stats history for charts
   app.get('/stats/history', async (req) => {
     const q = z.object({ days: z.coerce.number().int().min(1).max(365).default(30) }).parse(req.query);

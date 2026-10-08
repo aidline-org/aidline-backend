@@ -14,6 +14,7 @@ const listQuery = pagination.extend({
   status: z.enum(['active', 'completed', 'cancelled', 'expired']).optional(),
   creator: z.string().optional(),
   verifier: z.string().optional(),
+  q: z.string().optional(),
   // #2 – full‑text search across title and location (via tsvector added in migration 003)
   q: z.string().trim().min(1).optional(),
   // #9 – sort order
@@ -33,6 +34,38 @@ const CAMPAIGN_COLUMNS = `
     'category', m.category, 'imageUrl', m.image_url
   ) END AS metadata`;
 
+/**
+ * Escapes a single CSV cell value per RFC 4180:
+ *  - If the value contains a comma, double-quote, newline or carriage-return,
+ *    it is wrapped in double-quotes and any embedded double-quotes are doubled.
+ *  - Empty/null values are emitted as an empty unquoted field.
+ *
+ * This implementation is intentionally small and has no external dependencies.
+ */
+function csvCell(value: string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '';
+  const s = String(value);
+  if (/[,"\r\n]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function csvRow(cells: (string | null | undefined)[]): string {
+  return cells.map(csvCell).join(',');
+}
+
+const CSV_HEADERS = [
+  'type',
+  'createdAt',
+  'campaignId',
+  'actor',
+  'amount',
+  'milestoneIndex',
+  'txHash',
+  'eventId',
+].join(',');
+
 export async function campaignRoutes(app: FastifyInstance) {
   app.get('/campaigns', async (req) => {
     const q = listQuery.parse(req.query);
@@ -46,17 +79,32 @@ export async function campaignRoutes(app: FastifyInstance) {
     if (q.status) add(`${STATUS_SQL} = ?`, q.status);
     if (q.creator) add('c.creator = ?', q.creator);
     if (q.verifier) add('c.verifier = ?', q.verifier);
+
+    // Full-text search via the stored tsvector column (Issue #26).
+    // When q.q is blank we skip the clause entirely so existing filters work unchanged.
+    if (q.q && q.q.trim().length > 0) {
+      params.push(q.q.trim());
+      where.push(`m.search_vector @@ websearch_to_tsquery('english', $${params.length})`);
+    }
     // #2 – search by title or location via the tsvector column
     if (q.q) add(`m.search_vec @@ plainto_tsquery('english', ?)`, q.q);
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const orderSql = SORT_MAP[q.sort];
 
+    // When a full-text search term is present, rank by relevance first; otherwise
+    // preserve the existing newest-first ordering.
+    const orderBy =
+      q.q && q.q.trim().length > 0
+        ? `ts_rank(m.search_vector, websearch_to_tsquery('english', ${(() => { params.push(q.q.trim()); return `$${params.length}`; })()})) DESC, c.created_at DESC`
+        : 'c.created_at DESC';
+
     params.push(q.limit, q.offset);
     const { rows } = await app.db.query(
       `SELECT ${CAMPAIGN_COLUMNS}, count(*) OVER()::int AS total
        FROM campaigns c LEFT JOIN campaign_metadata m ON m.id = c.metadata_id
        ${whereSql}
+       ORDER BY ${orderBy}
        ORDER BY ${orderSql}
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
@@ -116,6 +164,100 @@ export async function campaignRoutes(app: FastifyInstance) {
     return { items: rows };
   });
 
+  /**
+   * GET /campaigns/:id/export.csv
+   *
+   * Returns a CSV file containing all donations, milestone releases, and refunds
+   * for the specified campaign, suitable for auditor review.
+   *
+   * Columns: type, createdAt, campaignId, actor, amount, milestoneIndex, txHash, eventId
+   *
+   * Amounts are returned as-is from NUMERIC(39,0) columns — i.e., exact integer
+   * strings in the token's smallest unit (stroops) with no floating-point conversion.
+   *
+   * Ordering: chronological (created_at ASC), with event_id as a tie-breaker.
+   */
+  app.get('/campaigns/:id/export.csv', async (req, reply) => {
+    const { id } = z.object({ id: z.coerce.bigint() }).parse(req.params);
+
+    // Verify the campaign exists.
+    const exists = await app.db.query('SELECT 1 FROM campaigns WHERE id = $1', [id.toString()]);
+    if (!exists.rows[0]) return notFound(reply, 'campaign');
+
+    // Fetch all three record types in a single chronological query.
+    // UNION ALL preserves every row; type column distinguishes them.
+    // Amounts are NUMERIC(39,0) returned as strings by pool.ts type parsers.
+    const { rows } = await app.db.query<{
+      type: string;
+      created_at: Date;
+      campaign_id: string;
+      actor: string | null;
+      amount: string;
+      milestone_index: number | null;
+      tx_hash: string;
+      event_id: string;
+    }>(
+      `SELECT 'donation'            AS type,
+              created_at,
+              campaign_id::text,
+              donor                  AS actor,
+              amount::text,
+              NULL::integer          AS milestone_index,
+              tx_hash,
+              event_id
+       FROM donations WHERE campaign_id = $1
+
+       UNION ALL
+
+       SELECT 'release'             AS type,
+              created_at,
+              campaign_id::text,
+              NULL                   AS actor,
+              amount::text,
+              index                  AS milestone_index,
+              tx_hash,
+              event_id
+       FROM milestone_releases WHERE campaign_id = $1
+
+       UNION ALL
+
+       SELECT 'refund'              AS type,
+              created_at,
+              campaign_id::text,
+              donor                  AS actor,
+              amount::text,
+              NULL::integer          AS milestone_index,
+              tx_hash,
+              event_id
+       FROM refunds WHERE campaign_id = $1
+
+       ORDER BY created_at ASC, event_id ASC`,
+      [id.toString()],
+    );
+
+    const lines: string[] = [CSV_HEADERS];
+    for (const row of rows) {
+      lines.push(
+        csvRow([
+          row.type,
+          row.created_at.toISOString(),
+          row.campaign_id,
+          row.actor,
+          row.amount,
+          row.milestone_index !== null ? String(row.milestone_index) : null,
+          row.tx_hash,
+          row.event_id,
+        ]),
+      );
+    }
+
+    const csv = lines.join('\r\n') + '\r\n';
+
+    return reply
+      .code(200)
+      .header('Content-Type', 'text/csv; charset=utf-8')
+      .header('Content-Disposition', `attachment; filename="campaign-${id.toString()}.csv"`)
+      .send(csv);
   // #1 – list refunds for a campaign
   app.get('/campaigns/:id/refunds', async (req, reply) => {
     const { id } = z.object({ id: z.coerce.bigint() }).parse(req.params);

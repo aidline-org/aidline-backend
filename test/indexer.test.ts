@@ -1,6 +1,6 @@
 import type { rpc } from '@stellar/stellar-sdk';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Db } from '../src/db/pool.js';
 import { Indexer, type EventSource } from '../src/indexer/indexer.js';
@@ -14,8 +14,16 @@ class FakeChain implements EventSource {
   campaigns = new Map<bigint, ChainCampaign>();
   requests: rpc.Api.GetEventsRequest[] = [];
 
+  /** When set, the next getEvents call throws this error then clears itself. */
+  nextError: Error | null = null;
+
   async getEvents(req: rpc.Api.GetEventsRequest) {
     this.requests.push(req);
+    if (this.nextError) {
+      const err = this.nextError;
+      this.nextError = null;
+      throw err;
+    }
     const events = this.pages.shift() ?? [];
     return { events, cursor: `cursor-${this.requests.length}`, latestLedger: 500 } as never;
   }
@@ -114,5 +122,207 @@ describe('Indexer', () => {
     await expect(indexerFor(chain).syncOnce()).rejects.toThrow('no campaign 9');
     const s = await db.query('SELECT cursor FROM indexer_state');
     expect(s.rowCount).toBe(0);
+  });
+
+  // ── Issue #23: cursor-retention recovery ─────────────────────────────────
+
+  describe('cursor-retention recovery', () => {
+    it('recovers when the RPC reports cursor is no longer available', async () => {
+      const chain = new FakeChain();
+      const campaign = chainCampaign({ raised: 800n, released: 200n, milestonesReleased: 1 });
+      chain.campaigns.set(0n, campaign);
+
+      // Seed the indexer state with a cursor that will "expire"
+      await db.query(
+        `INSERT INTO indexer_state (id, cursor, last_ledger) VALUES (1, 'old-cursor-100', 100)`,
+      );
+      // Also seed a campaign row so recovery can see it
+      await db.query(
+        `INSERT INTO campaigns (id, creator, beneficiary, verifier, kind, metadata_uri, goal,
+           deadline, milestones, milestones_released, raised, released, status,
+           created_ledger, created_at)
+         VALUES ('0', $1, $2, $3, 'emergency', 'ipfs://x', '1000',
+           to_timestamp(9999999999), '{}', 1, '500', '100', 'active', 100, now())`,
+        [campaign.creator, campaign.beneficiary, campaign.verifier],
+      );
+
+      // Simulate a cursor-retention RPC error
+      chain.nextError = new Error('cursor is no longer available at ledger 100');
+
+      const logSpy = vi.spyOn(app.log, 'warn');
+      const indexer = indexerFor(chain);
+      // syncOnce should NOT throw — it catches and recovers
+      const count = await indexer.syncOnce();
+      expect(count).toBe(0);
+
+      // Cursor must be cleared so the next poll starts fresh
+      const state = await db.query<{ cursor: string | null; last_ledger: number }>(
+        'SELECT cursor, last_ledger FROM indexer_state WHERE id = 1',
+      );
+      expect(state.rows[0].cursor).toBeNull();
+      // last_ledger should be the oldest available ledger from getHealth (50)
+      expect(state.rows[0].last_ledger).toBe(50);
+
+      // Campaign totals must be updated from the contract
+      const row = await db.query<{ raised: string; released: string }>(
+        'SELECT raised, released FROM campaigns WHERE id = $1',
+        ['0'],
+      );
+      expect(row.rows[0].raised).toBe('800');
+      expect(row.rows[0].released).toBe('200');
+
+      // Gap must be logged
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ expiredCursor: 'old-cursor-100' }),
+        expect.stringContaining('gap recovery'),
+      );
+
+      logSpy.mockRestore();
+    });
+
+    it('triggers recovery for all known cursor-retention error phrases', async () => {
+      const retentionPhrases = [
+        'cursor is not found',
+        'cursor expired',
+        'start ledger is too old',
+        'outside the ledger range',
+      ];
+
+      for (const phrase of retentionPhrases) {
+        await resetDb(db);
+        const chain = new FakeChain();
+        // Seed a cursor
+        await db.query(
+          `INSERT INTO indexer_state (id, cursor, last_ledger) VALUES (1, 'old-cursor', 50)`,
+        );
+        chain.nextError = new Error(phrase);
+        const indexer = indexerFor(chain);
+        // Should not throw — recovery is triggered
+        await expect(indexer.syncOnce()).resolves.toBe(0);
+        // Cursor cleared
+        const s = await db.query('SELECT cursor FROM indexer_state WHERE id = 1');
+        expect(s.rows[0].cursor).toBeNull();
+      }
+    });
+
+    it('does NOT trigger recovery for unrelated RPC errors', async () => {
+      const chain = new FakeChain();
+      await db.query(
+        `INSERT INTO indexer_state (id, cursor, last_ledger) VALUES (1, 'cur', 100)`,
+      );
+      chain.nextError = new Error('unauthorized: bad api key');
+      const indexer = indexerFor(chain);
+      // Should re-throw the unrelated error
+      await expect(indexer.syncOnce()).rejects.toThrow('unauthorized');
+      // Cursor must not have been modified
+      const s = await db.query('SELECT cursor FROM indexer_state WHERE id = 1');
+      expect(s.rows[0].cursor).toBe('cur');
+    });
+
+    it('does NOT trigger recovery when there is no stored cursor yet', async () => {
+      // If there is no cursor at all (fresh db) and the RPC errors, it should
+      // propagate regardless of the error message.
+      const chain = new FakeChain();
+      chain.nextError = new Error('cursor is not found');
+      const indexer = indexerFor(chain);
+      await expect(indexer.syncOnce()).rejects.toThrow('cursor is not found');
+    });
+
+    it('resumes normal indexing from the oldest ledger after recovery', async () => {
+      const chain = new FakeChain();
+      // Seed a cursor that will expire
+      await db.query(
+        `INSERT INTO indexer_state (id, cursor, last_ledger) VALUES (1, 'expired-cur', 10)`,
+      );
+      chain.nextError = new Error('start ledger is too old');
+
+      const indexer = indexerFor(chain);
+      await indexer.syncOnce(); // triggers recovery, clears cursor
+
+      // Second syncOnce — no error this time, empty page
+      chain.pages.push([]);
+      await indexer.syncOnce();
+
+      // The second request must use startLedger (since cursor is NULL after recovery)
+      // getHealth returns oldestLedger=50; startLedger config is 10, clamped to 50
+      const lastReq = chain.requests[chain.requests.length - 1];
+      expect(lastReq).toMatchObject({ startLedger: 50 });
+    });
+
+    it('does not duplicate existing campaign records during recovery', async () => {
+      const chain = new FakeChain();
+      const campaign = chainCampaign({ raised: 500n });
+      chain.campaigns.set(0n, campaign);
+
+      // Pre-seed campaign and a donation
+      await db.query(
+        `INSERT INTO campaigns (id, creator, beneficiary, verifier, kind, metadata_uri, goal,
+           deadline, milestones, milestones_released, raised, released, status,
+           created_ledger, created_at)
+         VALUES ('0', $1, $2, $3, 'emergency', 'ipfs://x', '1000',
+           to_timestamp(9999999999), '{}', 0, '500', '0', 'active', 100, now())`,
+        [campaign.creator, campaign.beneficiary, campaign.verifier],
+      );
+      await db.query(
+        `INSERT INTO indexer_state (id, cursor, last_ledger) VALUES (1, 'stale-cursor', 100)`,
+      );
+
+      chain.nextError = new Error('event ledger range not available');
+      const indexer = indexerFor(chain);
+      await indexer.syncOnce(); // recovery
+
+      // Run recovery again to check idempotency
+      await db.query(
+        `UPDATE indexer_state SET cursor = 'stale-cursor2', last_ledger = 99 WHERE id = 1`,
+      );
+      chain.nextError = new Error('cursor is not found');
+      await indexer.syncOnce(); // recovery again
+
+      // Only one campaign row must exist
+      const camps = await db.query('SELECT count(*)::int AS n FROM campaigns');
+      expect(camps.rows[0].n).toBe(1);
+    });
+
+    it('does not corrupt the cursor if recovery itself fails', async () => {
+      const chain = new FakeChain();
+      // No campaign in chain.campaigns → getCampaign will throw for known campaigns
+      // but we need a campaign row to make recovery attempt to fetch it
+      await db.query(
+        `INSERT INTO campaigns (id, creator, beneficiary, verifier, kind, metadata_uri, goal,
+           deadline, milestones, milestones_released, raised, released, status,
+           created_ledger, created_at)
+         VALUES ('99', 'GABC', 'GABC', 'GABC', 'emergency', 'ipfs://x', '1000',
+           to_timestamp(9999999999), '{}', 0, '0', '0', 'active', 100, now())`,
+      );
+      await db.query(
+        `INSERT INTO indexer_state (id, cursor, last_ledger) VALUES (1, 'stale', 100)`,
+      );
+
+      // Make getHealth itself throw to simulate a total recovery failure
+      const failChain: EventSource = {
+        getEvents: async () => {
+          throw new Error('cursor is not found');
+        },
+        getHealth: async () => {
+          throw new Error('rpc completely down');
+        },
+      };
+
+      const indexer = new Indexer({
+        db,
+        source: failChain,
+        contract: chain,
+        contractId: CONTRACT_ID,
+        startLedger: 10,
+        pollMs: 1000,
+        log: app.log,
+      });
+
+      await expect(indexer.syncOnce()).rejects.toThrow('rpc completely down');
+
+      // Cursor must not have been cleared
+      const s = await db.query('SELECT cursor FROM indexer_state WHERE id = 1');
+      expect(s.rows[0].cursor).toBe('stale');
+    });
   });
 });

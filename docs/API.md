@@ -32,6 +32,7 @@ Network details the frontend needs: `network`, `networkPassphrase`, `rpcUrl`, `c
   "activeCampaigns": 3,
   "totalDonated": "52000000000",
   "totalReleased": "18000000000",
+  "totalRefunded": "0",
   "donors": 11,
   "verifiers": 2,
   "milestonesVerified": 5
@@ -40,11 +41,37 @@ Network details the frontend needs: `network`, `networkPassphrase`, `rpcUrl`, `c
 
 Money held in escrow is `totalDonated - totalReleased - totalRefunded`.
 
+### `GET /stats/history`
+
+Returns a time series of daily platform statistics snapshots for charting.
+
+```json
+{
+  "items": [
+    {
+      "snapshotDate": "2026-10-08",
+      "campaigns": 4,
+      "activeCampaigns": 3,
+      "totalDonated": "52000000000",
+      "totalReleased": "18000000000",
+      "totalRefunded": "0",
+      "donors": 11,
+      "verifiers": 2,
+      "milestonesVerified": 5
+    }
+  ]
+}
+```
+
+Snapshots are taken once per UTC day. `snapshotDate` is the UTC date of the snapshot (YYYY-MM-DD). Results are ordered chronologically, oldest first. Metrics have the exact same definitions as the `/stats` endpoint.
+
 ## Campaigns
 
 ### `GET /campaigns`
 
-Query: `kind` (`emergency` | `climate`), `status` (`active` | `completed` | `cancelled` | `expired`), `creator`, `verifier`, `limit` (max 100), `offset`.
+Query: `q` (full text search), `kind` (`emergency` | `climate`), `status` (`active` | `completed` | `cancelled` | `expired`), `creator`, `verifier`, `limit` (max 100), `offset`.
+
+When `q` is provided, campaigns are full-text searched across their title, summary, location, and organizer. Results are ranked deterministically by relevance (matches in title rank higher than matches in summary, etc), followed by newest first. When `q` is absent, results are just newest first.
 
 Returns `{ items, total }`. Each item:
 
@@ -96,6 +123,43 @@ The same fields, plus `metadata.description` and a milestone timeline:
 ### `GET /campaigns/:id/donations`
 
 Paginated `{ items: [{ donor, amount, txHash, createdAt }] }`, newest first.
+
+### `GET /campaigns/:id/export.csv`
+
+Returns a CSV file containing the complete financial activity for a campaign: donations, milestone releases, and refunds.
+
+**Response headers**
+
+| Header                | Value                                       |
+| --------------------- | ------------------------------------------- |
+| `Content-Type`        | `text/csv; charset=utf-8`                   |
+| `Content-Disposition` | `attachment; filename="campaign-<id>.csv"`  |
+
+**CSV columns** (always in this order)
+
+| Column           | Description                                                                 |
+| ---------------- | --------------------------------------------------------------------------- |
+| `type`           | `donation`, `release`, or `refund`                                          |
+| `createdAt`      | ISO 8601 timestamp from the on-chain ledger close time                      |
+| `campaignId`     | Numeric campaign identifier                                                 |
+| `actor`          | Stellar address of the donor (donations and refunds); empty for releases    |
+| `amount`         | Exact integer string in the token's smallest unit (stroops, 7 decimals). Never rounded. |
+| `milestoneIndex` | Zero-based milestone index (releases only); empty for donations and refunds |
+| `txHash`         | Transaction hash on the Stellar network                                     |
+| `eventId`        | Soroban RPC event identifier (primary key of the history tables)            |
+
+**Ordering**: chronological by `createdAt` ascending, with `eventId` as the deterministic tie-breaker.
+
+**Amounts**: stored as `NUMERIC(39,0)` and returned as exact integer strings. They never pass through a JavaScript number, so large i128 token values are preserved without rounding or scientific notation.
+
+**Authentication**: none — follows the same open access model as all other read endpoints.
+
+**Errors**
+
+| Status | body `error`    | Condition                      |
+| ------ | --------------- | ------------------------------ |
+| 404    | `not_found`     | Campaign id does not exist     |
+| 400    | `validation_error` | Campaign id is not a valid integer |
 
 ## Releases
 
