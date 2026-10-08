@@ -207,9 +207,7 @@ describe('Indexer', () => {
 
     it('does NOT trigger recovery for unrelated RPC errors', async () => {
       const chain = new FakeChain();
-      await db.query(
-        `INSERT INTO indexer_state (id, cursor, last_ledger) VALUES (1, 'cur', 100)`,
-      );
+      await db.query(`INSERT INTO indexer_state (id, cursor, last_ledger) VALUES (1, 'cur', 100)`);
       chain.nextError = new Error('unauthorized: bad api key');
       const indexer = indexerFor(chain);
       // Should re-throw the unrelated error

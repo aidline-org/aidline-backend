@@ -60,10 +60,7 @@ describe('GET /campaigns/:id/export.csv', () => {
   it('includes donations in the CSV', async () => {
     const donor = account();
     const campaign = chainCampaign({ raised: 500n });
-    await index(campaign, [
-      events.created(0n, campaign.creator),
-      events.donated(0n, donor, 500n),
-    ]);
+    await index(campaign, [events.created(0n, campaign.creator), events.donated(0n, donor, 500n)]);
     const res = await app.inject({ url: '/campaigns/0/export.csv' });
     expect(res.body).toContain('donation');
     expect(res.body).toContain('500');
@@ -85,10 +82,7 @@ describe('GET /campaigns/:id/export.csv', () => {
   it('includes refunds in the CSV', async () => {
     const donor = account();
     const campaign = chainCampaign();
-    await index(campaign, [
-      events.created(0n, campaign.creator),
-      events.refunded(0n, donor, 50n),
-    ]);
+    await index(campaign, [events.created(0n, campaign.creator), events.refunded(0n, donor, 50n)]);
     const res = await app.inject({ url: '/campaigns/0/export.csv' });
     expect(res.body).toContain('refund');
     expect(res.body).toContain('50');
@@ -186,7 +180,10 @@ describe('GET /campaigns/:id/export.csv', () => {
       events.released(0n, 0, 300n, 'ipfs://proof'),
     ]);
     const res = await app.inject({ url: '/campaigns/0/export.csv' });
-    const lines = res.body.split('\r\n').filter((l) => l.length > 0).slice(1); // skip header
+    const lines = res.body
+      .split('\r\n')
+      .filter((l) => l.length > 0)
+      .slice(1); // skip header
     // All rows must have a parseable ISO timestamp in column 1
     const timestamps = lines.map((l) => {
       const cols = l.split(',');

@@ -4,9 +4,10 @@ import { getStatsHistory } from '../indexer/stats.js';
 export async function metaRoutes(app: FastifyInstance) {
   // #3 – report indexer lag (difference between the chain's latest ledger and the indexed ledger)
   app.get('/health', async () => {
-    const { rows } = await app.db.query<{ last_ledger: number | null; latest_ledger: number | null }>(
-      'SELECT last_ledger, latest_ledger FROM indexer_state WHERE id = 1',
-    );
+    const { rows } = await app.db.query<{
+      last_ledger: number | null;
+      latest_ledger: number | null;
+    }>('SELECT last_ledger, latest_ledger FROM indexer_state WHERE id = 1');
     const row = rows[0];
     const indexedLedger = row?.last_ledger ?? null;
     const latestLedger = row?.latest_ledger ?? null;

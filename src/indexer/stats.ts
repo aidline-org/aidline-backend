@@ -114,7 +114,11 @@ export async function getStatsHistory(db: Db): Promise<DailySnapshot[]> {
  */
 export function startDailySnapshotScheduler(
   db: Db,
-  log: { info(msg: string): void; warn(msg: string, ...args: unknown[]): void; error(obj: unknown, msg: string): void },
+  log: {
+    info(msg: string): void;
+    warn(msg: string, ...args: unknown[]): void;
+    error(obj: unknown, msg: string): void;
+  },
 ): NodeJS.Timeout {
   const take = async () => {
     try {

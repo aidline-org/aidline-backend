@@ -166,23 +166,23 @@ Returns a CSV file containing the complete financial activity for a campaign: do
 
 **Response headers**
 
-| Header                | Value                                       |
-| --------------------- | ------------------------------------------- |
-| `Content-Type`        | `text/csv; charset=utf-8`                   |
-| `Content-Disposition` | `attachment; filename="campaign-<id>.csv"`  |
+| Header                | Value                                      |
+| --------------------- | ------------------------------------------ |
+| `Content-Type`        | `text/csv; charset=utf-8`                  |
+| `Content-Disposition` | `attachment; filename="campaign-<id>.csv"` |
 
 **CSV columns** (always in this order)
 
-| Column           | Description                                                                 |
-| ---------------- | --------------------------------------------------------------------------- |
-| `type`           | `donation`, `release`, or `refund`                                          |
-| `createdAt`      | ISO 8601 timestamp from the on-chain ledger close time                      |
-| `campaignId`     | Numeric campaign identifier                                                 |
-| `actor`          | Stellar address of the donor (donations and refunds); empty for releases    |
+| Column           | Description                                                                             |
+| ---------------- | --------------------------------------------------------------------------------------- |
+| `type`           | `donation`, `release`, or `refund`                                                      |
+| `createdAt`      | ISO 8601 timestamp from the on-chain ledger close time                                  |
+| `campaignId`     | Numeric campaign identifier                                                             |
+| `actor`          | Stellar address of the donor (donations and refunds); empty for releases                |
 | `amount`         | Exact integer string in the token's smallest unit (stroops, 7 decimals). Never rounded. |
-| `milestoneIndex` | Zero-based milestone index (releases only); empty for donations and refunds |
-| `txHash`         | Transaction hash on the Stellar network                                     |
-| `eventId`        | Soroban RPC event identifier (primary key of the history tables)            |
+| `milestoneIndex` | Zero-based milestone index (releases only); empty for donations and refunds             |
+| `txHash`         | Transaction hash on the Stellar network                                                 |
+| `eventId`        | Soroban RPC event identifier (primary key of the history tables)                        |
 
 **Ordering**: chronological by `createdAt` ascending, with `eventId` as the deterministic tie-breaker.
 
@@ -192,9 +192,9 @@ Returns a CSV file containing the complete financial activity for a campaign: do
 
 **Errors**
 
-| Status | body `error`    | Condition                      |
-| ------ | --------------- | ------------------------------ |
-| 404    | `not_found`     | Campaign id does not exist     |
+| Status | body `error`       | Condition                          |
+| ------ | ------------------ | ---------------------------------- |
+| 404    | `not_found`        | Campaign id does not exist         |
 | 400    | `validation_error` | Campaign id is not a valid integer |
 
 ## Releases

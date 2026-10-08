@@ -289,8 +289,11 @@ export class Indexer {
     return new Map(entries);
   }
 
-  private async startLedger(health?: { oldestLedger: number; latestLedger: number }): Promise<number> {
-    const { oldestLedger, latestLedger } = health ?? await this.opts.source.getHealth();
+  private async startLedger(health?: {
+    oldestLedger: number;
+    latestLedger: number;
+  }): Promise<number> {
+    const { oldestLedger, latestLedger } = health ?? (await this.opts.source.getHealth());
     const wanted = this.opts.startLedger ?? latestLedger - 1000;
     // RPC only keeps recent history. Starting before that is an error.
     return Math.max(wanted, oldestLedger);

@@ -66,11 +66,11 @@ describe('Daily stats history', () => {
 
   it('is idempotent: taking a snapshot twice on the same day does not duplicate', async () => {
     const date = '2026-10-09';
-    
+
     // First run
     const res1 = await snapshotStats(db, date);
     expect(res1).toBe(true);
-    
+
     // Second run
     const res2 = await snapshotStats(db, date);
     expect(res2).toBe(false); // Indicates it was a no-op
@@ -89,23 +89,23 @@ describe('Daily stats history', () => {
     const res = await app.inject({ url: '/stats/history' });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    
+
     expect(body.items).toHaveLength(3);
-    
+
     const dates = body.items.map((item: any) => new Date(item.snapshotDate).getTime());
-    
+
     // Verify sorting (oldest to newest)
     expect(dates[0]).toBeLessThan(dates[1]);
     expect(dates[1]).toBeLessThan(dates[2]);
   });
-  
+
   it('GET /stats/history handles empty history correctly', async () => {
     const res = await app.inject({ url: '/stats/history' });
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.items).toEqual([]);
   });
-  
+
   it('uses exact amount representation for financial stats', async () => {
     const bigAmount = 123456789012345678901234n;
     const campaign = chainCampaign({ raised: bigAmount });
@@ -115,7 +115,7 @@ describe('Daily stats history', () => {
     ]);
 
     await snapshotStats(db, '2026-10-15');
-    
+
     const history = await getStatsHistory(db);
     expect(history[0].totalDonated).toBe(bigAmount.toString());
   });

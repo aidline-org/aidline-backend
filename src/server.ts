@@ -23,7 +23,9 @@ async function connectWithRetry(url: string, maxAttempts = 10, baseMs = 1000) {
     } catch (err) {
       if (attempt >= maxAttempts) throw err;
       const delay = Math.min(baseMs * 2 ** (attempt - 1), 30_000);
-      console.warn(`[boot] DB not ready (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms…`);
+      console.warn(
+        `[boot] DB not ready (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms…`,
+      );
       await new Promise((r) => setTimeout(r, delay));
     }
   }
