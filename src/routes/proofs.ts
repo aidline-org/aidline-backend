@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
 import { mkdir, unlink } from 'node:fs/promises';
-import { extname, join } from 'node:path';
+import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 
 import type { FastifyInstance } from 'fastify';
@@ -9,7 +9,18 @@ import { z } from 'zod';
 
 import { notFound } from '../lib/http.js';
 
-const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
+/**
+ * Allowed upload types and the file extension each is stored with. The extension comes from this
+ * table, never from the uploaded filename: the static file server picks the response content type
+ * from the extension, so a file named `x.html` sent as `image/png` would otherwise be served as
+ * HTML from this origin.
+ */
+const EXTENSIONS: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'application/pdf': '.pdf',
+};
 const MAX_FILES = 5;
 
 const fields = z.object({
@@ -36,7 +47,8 @@ export async function proofRoutes(app: FastifyInstance) {
           raw[part.fieldname] = String(part.value);
           continue;
         }
-        if (!ALLOWED_TYPES.has(part.mimetype) || files.length >= MAX_FILES) {
+        const extension = EXTENSIONS[part.mimetype];
+        if (!extension || files.length >= MAX_FILES) {
           part.file.resume();
           return reply.code(400).send({
             error: 'invalid_file',
@@ -44,7 +56,7 @@ export async function proofRoutes(app: FastifyInstance) {
           });
         }
         await mkdir(dir, { recursive: true });
-        const name = `${files.length}${extname(part.filename).toLowerCase()}`;
+        const name = `${files.length}${extension}`;
         const path = join(dir, name);
         await pipeline(part.file, createWriteStream(path));
         written.push(path);

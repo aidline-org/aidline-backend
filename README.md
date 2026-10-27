@@ -49,6 +49,7 @@ All settings come from environment variables. See [`.env.example`](.env.example)
 | `INDEXER_START_LEDGER` | latest minus 1000       | Where to start on a fresh database                     |
 | `INDEXER_POLL_MS`      | `5000`                  | Poll interval                                          |
 | `UPLOAD_DIR`           | `uploads`               | Where proof files are stored                           |
+| `METRICS_ENABLED`      | `true`                  | Serve Prometheus metrics at `/metrics`                 |
 
 Variables are prefixed with `AIDLINE_` on purpose: the Stellar CLI reads `STELLAR_*` variables from `.env`, and sharing names would make CLI commands run from this folder fail.
 
@@ -78,6 +79,7 @@ Generated account keys are saved to `.seed-accounts.json`, which is gitignored. 
 | `npm run dev:db`              | Local Postgres in `.pgdata/`           |
 | `npm run migrate`             | Apply database migrations              |
 | `npm test`                    | Run tests against a throwaway Postgres |
+| `npm run test:coverage`       | Tests plus a coverage report           |
 | `npm run lint`                | ESLint                                 |
 | `npm run typecheck`           | TypeScript without emitting            |
 | `npm run build` / `npm start` | Production build and run               |

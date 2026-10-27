@@ -19,6 +19,7 @@ const schema = z.object({
   INDEXER_START_LEDGER: z.coerce.number().int().optional(),
   INDEXER_POLL_MS: z.coerce.number().int().min(1000).default(5000),
   INDEXER_ENABLED: bool,
+  METRICS_ENABLED: bool,
   UPLOAD_DIR: z.string().default('uploads'),
 });
 
