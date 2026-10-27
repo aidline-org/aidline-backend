@@ -13,6 +13,7 @@ Copy [`.env.example`](../.env.example) to `.env` for local development.
 | `PUBLIC_BASE_URL` | `http://localhost:4000` | Public URL of this service. Used to build the metadata and proof URIs stored on chain. A trailing slash is removed |
 | `CORS_ORIGINS`    | `http://localhost:3000` | Comma separated list of allowed frontend origins                                                                   |
 | `UPLOAD_DIR`      | `uploads`               | Directory for proof files                                                                                          |
+| `METRICS_ENABLED` | `true`                  | Serve Prometheus metrics at `GET /metrics`. Restrict that path at your proxy in production                         |
 
 ## Database
 
