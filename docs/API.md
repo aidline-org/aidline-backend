@@ -32,6 +32,22 @@ Renders an interactive Swagger UI reference for the API. Navigate here in a brow
 
 `latestLedger` is the most recent ledger seen from the network on the last sync. `lagLedgers` is the difference between `latestLedger` and `indexedLedger`. Both are `null` before the first sync completes.
 
+### `GET /metrics`
+
+Prometheus text format, for scraping by Prometheus, Grafana Agent or any compatible tool. Set `METRICS_ENABLED=false` to turn it off. It is not part of the OpenAPI spec.
+
+| Metric                                  | Type      | Labels                      | Meaning                                                                                           |
+| --------------------------------------- | --------- | --------------------------- | ------------------------------------------------------------------------------------------------- |
+| `aidline_http_requests_total`           | counter   | `method`, `route`, `status` | Requests handled. `route` is the pattern, such as `/campaigns/:id`; unknown paths are `unmatched` |
+| `aidline_http_request_duration_seconds` | histogram | `method`, `route`           | Request duration                                                                                  |
+| `aidline_indexed_ledger`                | gauge     |                             | Last ledger the indexer processed                                                                 |
+| `aidline_latest_ledger`                 | gauge     |                             | Latest ledger seen from the network                                                               |
+| `aidline_indexer_lag_ledgers`           | gauge     |                             | Ledgers between the network tip and the indexer. `0` means caught up                              |
+
+Default Node.js process metrics (`process_*`, `nodejs_*`) are included. Scrapes of `/metrics` itself are not counted. The indexer gauges are absent until the first sync completes.
+
+`/metrics` is unauthenticated and exposes operational data. In production, restrict it at your proxy or network layer.
+
 ### `GET /config`
 
 Network details the frontend needs: `network`, `networkPassphrase`, `rpcUrl`, `contractId`, `tokenId`.

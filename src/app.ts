@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
+import helmet from '@fastify/helmet';
 import fastifyStatic from '@fastify/static';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
@@ -13,6 +14,7 @@ import { ZodError } from 'zod';
 
 import type { Config } from './config.js';
 import type { Db } from './db/pool.js';
+import { registerMetrics } from './metrics.js';
 import { campaignRoutes } from './routes/campaigns.js';
 import { donorRoutes } from './routes/donors.js';
 import { metaRoutes } from './routes/meta.js';
@@ -37,6 +39,14 @@ export async function buildApp(
   app.decorate('db', db);
   app.decorate('config', config);
 
+  // Hardening headers (nosniff, frame-ancestors via X-Frame-Options, referrer policy, HSTS).
+  // The CSP is off because this is a JSON API plus the Swagger UI, which needs inline scripts.
+  // Cross-origin resource policy must allow other origins, or the frontend could not show proof
+  // images served from /uploads.
+  await app.register(helmet, {
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  });
   await app.register(cors, { origin: config.corsOrigins });
   await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
   await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024, files: 5 } });
@@ -104,6 +114,8 @@ export async function buildApp(
     }
     done();
   });
+
+  if (config.METRICS_ENABLED) registerMetrics(app);
 
   await app.register(metaRoutes);
   await app.register(campaignRoutes);

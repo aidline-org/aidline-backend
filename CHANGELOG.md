@@ -17,9 +17,13 @@ All notable changes to this project are documented here. The format follows [Kee
 - Automatic recovery when the RPC cursor falls out of retention (#23, @adetomiwa21, @oladayo2222)
 - CSV export for auditors at `/campaigns/:id/export.csv` (#24, @adetomiwa21)
 - Daily stats snapshots at `/stats/history` (#25, @adetomiwa21)
+- Prometheus metrics at `GET /metrics`: request counts and latency by route, indexer progress and lag (`METRICS_ENABLED`, on by default)
+- Security headers on every response through `@fastify/helmet`, with cross-origin loading allowed so proof images still show in the frontend
+- Tests for the config loader and request helpers, and `npm run test:coverage` with a minimum threshold enforced in CI
 
 ### Fixed
 
+- Proof files are stored with an extension taken from their validated type instead of the uploaded filename. Before, a file named `x.html` sent as `image/png` was served as HTML from the API's origin
 - Two parallel implementations of indexer recovery, stats history and search were merged into one each; a migration renumbered and duplicate tables dropped
 - Stats history dates no longer shift by a day outside UTC
 - A blank search is treated as no search, and refunds are ordered deterministically
