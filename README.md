@@ -4,6 +4,8 @@
 
 # Aidline Backend
 
+[![CI](https://github.com/aidline-org/aidline-backend/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/aidline-org/aidline-backend/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 **Live demo:** [aidline-frontend.vercel.app](https://aidline-frontend.vercel.app) · **API:** [aidline-api.onrender.com](https://aidline-api.onrender.com/stats) · Stellar testnet
 
 API and Soroban event indexer for **Aidline**, where diaspora communities fund disaster relief and climate work back home, with proof it landed. Built on Stellar.
@@ -92,6 +94,10 @@ Proof uploads are stored on local disk, which is not persistent on most free hos
 
 - [API reference](docs/API.md)
 - [Architecture](docs/ARCHITECTURE.md): how the indexer stays consistent, data model, design decisions
+- [Deployment](docs/DEPLOYMENT.md): Render, Docker, mainnet checklist, troubleshooting
+- [Environment variables](docs/ENVIRONMENT.md): every setting, its default and what it does
+- [Decision records](docs/adr/README.md): why the backend is built the way it is
+- [Roadmap](ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 
 ## Contributing
