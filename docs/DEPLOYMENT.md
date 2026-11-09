@@ -10,18 +10,34 @@ This guide covers running the Aidline backend outside your laptop. The backend i
 
 ## Option 1: Render (what the demo uses)
 
-[`render.yaml`](../render.yaml) describes the API and a Postgres database.
+[`render.yaml`](../render.yaml) describes the API service. The database lives outside Render: Render's free Postgres expires after 30 days, and when it did the API could not start. The demo uses a free [Neon](https://neon.tech) database instead; any Postgres 14 or newer works.
 
-1. In Render, create a new **Blueprint** from this repo.
-2. Fill in the variables marked `sync: false`:
+1. Create the database and copy its connection string. For Neon, use the string from **Connect**, keep `?sslmode=require` at the end and drop `&channel_binding=require` if present.
+2. In Render, create a new **Blueprint** from this repo.
+3. Fill in the variables marked `sync: false`:
+   - `DATABASE_URL`: the connection string from step 1
    - `PUBLIC_BASE_URL`: the URL Render gives the service, for example `https://aidline-api.onrender.com`
    - `CORS_ORIGINS`: the frontend URL, for example `https://aidline-frontend.vercel.app`
    - `AIDLINE_CONTRACT_ID`: the contract to index
-   - `INDEXER_START_LEDGER`: the ledger the contract was deployed at
-3. Deploy. Render runs `npm ci && npm run build`, then `npm start`.
-4. Check `https://<your-service>/health` and `https://<your-service>/stats`.
+   - `INDEXER_START_LEDGER`: the ledger the contract was deployed at. Leave it empty if that ledger is older than the RPC's retention window (about a week on testnet); the indexer then starts from recent ledgers
+4. Deploy. Render runs `npm ci && npm run build`, then `npm start`.
+5. Check `https://<your-service>/health` and `https://<your-service>/stats`.
 
 Migrations run automatically on startup, so there is no separate migration step.
+
+The free Render web service sleeps after about 15 minutes without traffic, and the first request after that takes about a minute. A scheduled ping to `/health` every 10 minutes (for example from cron-job.org) keeps it awake.
+
+### Starting over with an empty database
+
+Campaign titles, stories and proof notes are stored in Postgres, and testnet RPC only keeps about a week of contract events, so a new database cannot rebuild older campaigns. To give the demo content again, run the seeding script once with the contract admin key:
+
+```sh
+SEED_ADMIN_SECRET=$(stellar keys show <admin key name>) \
+SEED_API_URL=https://<your-service> \
+npm run seed:demo
+```
+
+It creates clearly labelled demo campaigns on testnet and writes the generated demo account keys to `.seed-accounts.json`, which is gitignored. Run it once; a second run creates a second set of campaigns.
 
 ## Option 2: Docker
 
@@ -66,9 +82,10 @@ Do not point this backend at mainnet until the contract has had an external audi
 
 ## Troubleshooting
 
-| Symptom                               | Likely cause                                                                                        |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `/campaigns` is empty                 | `AIDLINE_CONTRACT_ID` is empty, so the indexer is off, or the start ledger is after the first event |
-| Browser shows a CORS error            | The frontend origin is missing from `CORS_ORIGINS`                                                  |
-| Proof links return 404 after redeploy | Local disk was wiped. See "Proof file storage"                                                      |
-| Server exits at startup               | An environment variable failed validation. The error names the variable                             |
+| Symptom                                    | Likely cause                                                                                        |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `/campaigns` is empty                      | `AIDLINE_CONTRACT_ID` is empty, so the indexer is off, or the start ledger is after the first event |
+| Browser shows a CORS error                 | The frontend origin is missing from `CORS_ORIGINS`                                                  |
+| Proof links return 404 after redeploy      | Local disk was wiped. See "Proof file storage"                                                      |
+| Server exits at startup                    | An environment variable failed validation. The error names the variable                             |
+| Requests hang and logs show `DB not ready` | The database is unreachable, suspended or deleted. The server waits for it before listening         |
