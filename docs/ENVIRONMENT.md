@@ -77,4 +77,4 @@ The Stellar CLI reads `STELLAR_*` variables from `.env`. Sharing those names wou
 
 ## Secrets
 
-The backend holds no signing keys and never moves funds. `DATABASE_URL` is the only secret. Do not commit `.env`. The demo seeding script reads `SEED_ADMIN_SECRET` from the shell for a single run and never stores it.
+The backend never moves funds, but the TTL keeper does sign a transaction, so `AIDLINE_KEEPER_SECRET` is a secret. Use a dedicated, minimally funded testnet account and keep it in the environment or a secret manager, never in the repo. `DATABASE_URL` is also a secret. Do not commit `.env`. The demo seeding script reads `SEED_ADMIN_SECRET` from the shell for a single run and never stores it.

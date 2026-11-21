@@ -1,3 +1,4 @@
+import { Keypair } from '@stellar/stellar-sdk';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -16,6 +17,9 @@ import {
 } from './helpers.js';
 
 const { app, db } = (await setupApp()) as { app: FastifyInstance; db: Db };
+
+const metadataHeaders = () => signRequest(uploaderKeypair, 'metadata:create');
+const proofVerifier = Keypair.random();
 
 const metadata = {
   title: 'Clean water after flooding in Les Cayes',
@@ -53,7 +57,12 @@ describe('API', () => {
   });
 
   it('creates metadata and returns a URI for the contract', async () => {
-    const res = await app.inject({ method: 'POST', url: '/metadata', payload: metadata });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/metadata',
+      payload: metadata,
+      headers: metadataHeaders(),
+    });
     expect(res.statusCode).toBe(201);
     const { id, uri } = res.json();
     expect(uri).toBe(`http://api.test/metadata/${id}`);
@@ -63,13 +72,25 @@ describe('API', () => {
   });
 
   it('rejects invalid metadata with field level errors', async () => {
-    const res = await app.inject({ method: 'POST', url: '/metadata', payload: { title: 'x' } });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/metadata',
+      payload: { title: 'x' },
+      headers: metadataHeaders(),
+    });
     expect(res.statusCode).toBe(400);
     expect(res.json().issues.map((i: { path: string }) => i.path)).toContain('title');
   });
 
   it('serves indexed campaigns joined with their metadata', async () => {
-    const meta = (await app.inject({ method: 'POST', url: '/metadata', payload: metadata })).json();
+    const meta = (
+      await app.inject({
+        method: 'POST',
+        url: '/metadata',
+        payload: metadata,
+        headers: metadataHeaders(),
+      })
+    ).json();
     const donor = account();
     const campaign = chainCampaign({ metadataUri: meta.uri, raised: 600n });
     await index(campaign, [events.created(0n, campaign.creator), events.donated(0n, donor, 600n)]);
@@ -118,7 +139,6 @@ describe('API', () => {
     const proof = upload.json();
     expect(proof.files[0].url).toMatch(/\/uploads\/proofs\/.+\/0\.png$/);
 
-    const campaign = chainCampaign({ raised: 1000n, released: 300n, milestonesReleased: 1 });
     await index(campaign, [
       events.created(0n, campaign.creator),
       events.released(0n, 0, 300n, proof.uri),
@@ -136,6 +156,9 @@ describe('API', () => {
   });
 
   it('rejects proof files of the wrong type', async () => {
+    const campaign = chainCampaign({ verifier: proofVerifier.publicKey() });
+    await index(campaign, [events.created(0n, campaign.creator)]);
+
     const boundary = '----aidline';
     const body = [
       `--${boundary}\r\nContent-Disposition: form-data; name="files"; filename="x.exe"\r\nContent-Type: application/octet-stream\r\n\r\nMZ`,
@@ -145,7 +168,10 @@ describe('API', () => {
       method: 'POST',
       url: '/proofs',
       payload: body,
-      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      headers: {
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+        ...signRequest(proofVerifier, 'proof:upload', { campaignId: '0' }),
+      },
     });
     expect(res.statusCode).toBe(400);
   });
@@ -209,7 +235,14 @@ describe('API', () => {
   });
 
   it('lists recent milestone releases with campaign context', async () => {
-    const meta = (await app.inject({ method: 'POST', url: '/metadata', payload: metadata })).json();
+    const meta = (
+      await app.inject({
+        method: 'POST',
+        url: '/metadata',
+        payload: metadata,
+        headers: metadataHeaders(),
+      })
+    ).json();
     const campaign = chainCampaign({ metadataUri: meta.uri, raised: 600n, released: 300n });
     await index(campaign, [
       events.created(0n, campaign.creator),

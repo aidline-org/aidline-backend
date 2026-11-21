@@ -3,6 +3,7 @@ import {
   BASE_FEE,
   contract,
   Contract,
+  Keypair,
   nativeToScVal,
   rpc,
   scValToNative,
@@ -31,13 +32,19 @@ export interface ContractReader {
   getCampaign(id: bigint): Promise<ChainCampaign>;
 }
 
-export class AidlineContract implements ContractReader {
+/** The write side of the contract, used by the TTL keeper. */
+export interface ContractTtlExtender {
+  extendCampaignTtl(id: bigint): Promise<void>;
+}
+
+export class AidlineContract implements ContractReader, ContractTtlExtender {
   private readonly contract: Contract;
 
   constructor(
     private readonly server: rpc.Server,
     contractId: string,
     private readonly networkPassphrase: string,
+    private readonly keeper?: Keypair,
   ) {
     this.contract = new Contract(contractId);
   }
@@ -45,6 +52,41 @@ export class AidlineContract implements ContractReader {
   async getCampaign(id: bigint): Promise<ChainCampaign> {
     const raw = await this.read('get_campaign', nativeToScVal(id, { type: 'u64' }));
     return parseCampaign(raw);
+  }
+
+  /**
+   * #22: bumps the storage TTL of one campaign. Unlike `read`, this is a real
+   * transaction: it needs a funded source account and is signed by the keeper
+   * key loaded from the environment.
+   */
+  async extendCampaignTtl(id: bigint): Promise<void> {
+    if (!this.keeper) throw new Error('AIDLINE_KEEPER_SECRET is not configured');
+    const source = await this.server.getAccount(this.keeper.publicKey());
+    const raw = new TransactionBuilder(source, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(this.contract.call('extend_campaign_ttl', nativeToScVal(id, { type: 'u64' })))
+      .setTimeout(30)
+      .build();
+
+    const sim = await this.server.simulateTransaction(raw);
+    if (rpc.Api.isSimulationError(sim)) {
+      throw new Error(`extend_campaign_ttl failed: ${sim.error}`);
+    }
+    if (rpc.Api.isSimulationRestore(sim)) {
+      // The entry has already expired and needs a restore operation first. The
+      // keeper deliberately bumps well before that point, so treat it as an
+      // operator-visible error instead of silently skipping a campaign.
+      throw new Error(`extend_campaign_ttl(${id}) needs a restore, entry has expired`);
+    }
+
+    const tx = rpc.assembleTransaction(raw, sim).build();
+    tx.sign(this.keeper);
+    const sent = await this.server.sendTransaction(tx);
+    if (sent.status !== 'PENDING') {
+      throw new Error(`extend_campaign_ttl(${id}) was rejected: ${sent.status}`);
+    }
   }
 
   private async read(method: string, ...args: xdr.ScVal[]): Promise<unknown> {

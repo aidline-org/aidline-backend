@@ -1,8 +1,12 @@
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Db } from '../src/db/pool.js';
-import { getStatsHistory, snapshotStats } from '../src/indexer/stats.js';
+import {
+  getStatsHistory,
+  snapshotStats,
+  startDailySnapshotScheduler,
+} from '../src/indexer/stats.js';
 import { Indexer } from '../src/indexer/indexer.js';
 import type { ChainCampaign } from '../src/stellar/contract.js';
 import { account, chainCampaign, CONTRACT_ID, events, resetDb, setupApp } from './helpers.js';
@@ -120,5 +124,67 @@ describe('Daily stats history', () => {
 
     const history = await getStatsHistory(db);
     expect(history[0]!.totalDonated).toBe(bigAmount.toString());
+  });
+});
+
+describe('startDailySnapshotScheduler', () => {
+  afterEach(() => vi.useRealTimers());
+
+  function fakeDb(fail = false) {
+    let calls = 0;
+    const query = vi.fn(async () => {
+      calls += 1;
+      if (fail) throw new Error('database is down');
+      return { rows: [], rowCount: 1 };
+    });
+    return { db: { query } as unknown as Db, query, calls: () => calls };
+  }
+
+  function fakeLog() {
+    return { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  }
+
+  it('takes a snapshot immediately when started', async () => {
+    vi.useFakeTimers();
+    const { db, calls } = fakeDb();
+    const log = fakeLog();
+    const timer = startDailySnapshotScheduler(db, log);
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(calls()).toBe(1);
+    expect(log.info).toHaveBeenCalledWith('daily stats snapshot taken');
+    clearInterval(timer);
+  });
+
+  it('takes the next snapshot after the 24 hour interval', async () => {
+    vi.useFakeTimers();
+    const { db, calls } = fakeDb();
+    const timer = startDailySnapshotScheduler(db, fakeLog());
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls()).toBe(1);
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+    expect(calls()).toBe(2);
+    clearInterval(timer);
+  });
+
+  it('logs a failed snapshot without stopping later runs', async () => {
+    vi.useFakeTimers();
+    const { db, calls } = fakeDb(true);
+    const log = fakeLog();
+    const timer = startDailySnapshotScheduler(db, log);
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls()).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.any(Error) }),
+      'daily stats snapshot failed',
+    );
+
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+    expect(calls()).toBe(2);
+    expect(log.error).toHaveBeenCalledTimes(2);
+    clearInterval(timer);
   });
 });

@@ -4,7 +4,15 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/pool.js';
 import { Indexer } from '../src/indexer/indexer.js';
 import type { ChainCampaign } from '../src/stellar/contract.js';
-import { chainCampaign, CONTRACT_ID, events, resetDb, setupApp } from './helpers.js';
+import {
+  chainCampaign,
+  CONTRACT_ID,
+  events,
+  resetDb,
+  setupApp,
+  signRequest,
+  uploaderKeypair,
+} from './helpers.js';
 
 const { app, db } = (await setupApp()) as { app: FastifyInstance; db: Db };
 
@@ -45,6 +53,7 @@ describe('Full-text search (?q=)', () => {
           location: 'Default location',
           ...metaOverride,
         },
+        headers: signRequest(uploaderKeypair, 'metadata:create'),
       })
     ).json();
 

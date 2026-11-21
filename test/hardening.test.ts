@@ -1,5 +1,6 @@
+import { Keypair } from '@stellar/stellar-sdk';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
@@ -11,6 +12,19 @@ const { app, db, config } = (await setupApp()) as {
   db: Db;
   config: ReturnType<typeof loadConfig>;
 };
+
+const proofSigner = Keypair.random();
+
+beforeAll(async () => {
+  await db.query(
+    `INSERT INTO campaigns
+       (id, creator, beneficiary, verifier, kind, metadata_uri, goal, deadline,
+        milestones, status, created_ledger, created_at)
+     VALUES ('0', $1, $1, $2, 'emergency', 'ipfs://x', '1000', now(), '{}', 'active', 1, now())
+     ON CONFLICT (id) DO NOTHING`,
+    [account(), proofSigner.publicKey()],
+  );
+});
 
 afterAll(async () => {
   await app.close();

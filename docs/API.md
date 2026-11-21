@@ -258,17 +258,47 @@ Create the story for a campaign before calling `create_campaign` on chain.
 
 Returns `201 { "id": "<uuid>", "uri": "http://.../metadata/<uuid>" }`. Pass `uri` as `metadata_uri` to the contract. Metadata is immutable.
 
+### Wallet signed writes
+
+`POST /metadata` and `POST /proofs` require a SEP-53 style signature from a Stellar address. Sign a message with `Keypair.signMessage` (the SDK hashes `"Stellar Signed Message:\n" + message` with SHA-256 before signing) and send these headers:
+
+| Header                | Value                                                            |
+| --------------------- | ---------------------------------------------------------------- |
+| `x-stellar-address`   | Signing `G...` address                                           |
+| `x-stellar-signature` | Base64 encoded 64-byte signature                                 |
+| `x-stellar-timestamp` | Unix milliseconds. Requests older than five minutes are rejected |
+| `x-stellar-nonce`     | Random unique value (at least 8 chars), one use per signature    |
+| `x-stellar-campaign`  | Campaign id, required for `/proofs` and bound into the message   |
+
+The signed message is exactly:
+
+```
+Aidline signed request
+purpose: metadata:create
+address: <address>
+timestamp: <timestamp>
+nonce: <nonce>
+```
+
+For proofs use `purpose: proof:upload` and an extra final line `campaign: <campaignId>`. `signRequest` in `src/lib/auth.ts` shows the canonical construction; the same function is used in the tests. A captured signature cannot be replayed (nonce) or reused on another route (purpose) or campaign (bound id). The frontend must add message signing to both upload flows.
+
 ### `GET /metadata/:id`
 
 ## Proofs
 
 ### `POST /proofs`
 
-`multipart/form-data` with fields `campaignId`, `milestoneIndex`, `note` (10 to 2000 chars) and up to 5 `files` (JPEG, PNG, WebP or PDF, 5 MB each).
+`multipart/form-data` with fields `campaignId`, `milestoneIndex`, `note` (10 to 2000 chars) and up to 5 `files` (JPEG, PNG, WebP or PDF, 5 MB each). Requires the wallet signature headers above, with `x-stellar-campaign` matching `campaignId`; the signer must be the campaign's verifier.
 
 The bytes of each file are checked against its declared type: a file whose contents are not a real JPEG, PNG, WebP or PDF is rejected with `400 { "error": "invalid_file" }`. The stored extension always comes from the detected type, never the uploaded filename.
 
 Returns `201 { "id", "uri", "files" }`. Pass `uri` as `proof_uri` to `approve_milestone`.
+
+| Status | body `error`   | Condition                                           |
+| ------ | -------------- | --------------------------------------------------- |
+| 401    | `unauthorized` | Missing, expired, invalid or replayed signature     |
+| 403    | `forbidden`    | Signer is not the verifier, or campaign id mismatch |
+| 404    | `not_found`    | Campaign does not exist                             |
 
 ### `GET /proofs/:id`
 
@@ -289,6 +319,10 @@ Campaigns where this address is the verifier, newest first. Each item has `id`, 
 ### `POST /verifiers/applications`
 
 `{ address, orgName, website?, country, description }`. Stores a profile. The admin still has to call `add_verifier` on chain before the address shows up as active.
+
+### `GET /verifiers/applications`
+
+Admin review queue: applications that are not yet active on chain. Requires the wallet signature headers with `purpose: admin:verifier-applications`, signed by the address in `ADMIN_WALLET_ADDRESS`. Paginated with `limit` and `offset`. Returns `{ items, total }`. Without a configured admin address the endpoint returns `403`.
 
 ## Donors
 

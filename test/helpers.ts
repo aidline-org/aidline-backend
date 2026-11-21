@@ -8,16 +8,24 @@ import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { migrate } from '../src/db/migrate.js';
 import { createPool, type Db } from '../src/db/pool.js';
+import { signRequest } from '../src/lib/auth.js';
 import type { ChainCampaign } from '../src/stellar/contract.js';
 import { TEST_DB_PORT } from './global-setup.js';
 
 export const CONTRACT_ID = 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC';
+
+/** Ephemeral testnet keypairs: generated at runtime, never committed. */
+export const adminKeypair = Keypair.random();
+export const uploaderKeypair = Keypair.random();
+
+export { signRequest };
 
 export async function setupApp() {
   const config = loadConfig({
     DATABASE_URL: `postgres://aidline:aidline@localhost:${TEST_DB_PORT}/aidline_test`,
     PUBLIC_BASE_URL: 'http://api.test',
     AIDLINE_CONTRACT_ID: CONTRACT_ID,
+    ADMIN_WALLET_ADDRESS: adminKeypair.publicKey(),
     UPLOAD_DIR: mkdtempSync(join(tmpdir(), 'aidline-uploads-')),
   });
   const db = createPool(config.DATABASE_URL);

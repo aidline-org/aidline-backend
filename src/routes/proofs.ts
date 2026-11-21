@@ -110,6 +110,11 @@ export async function proofRoutes(app: FastifyInstance) {
       }
 
       const f = fields.parse(raw);
+      if (f.campaignId.toString() !== campaignId) {
+        return reply
+          .code(403)
+          .send({ error: 'forbidden', message: 'Signed campaign id does not match the upload' });
+      }
       await app.db.query(
         `INSERT INTO proofs (id, campaign_id, milestone_index, note, files)
          VALUES ($1, $2, $3, $4, $5)`,

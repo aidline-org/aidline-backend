@@ -1,10 +1,11 @@
-import { rpc } from '@stellar/stellar-sdk';
+import { Keypair, rpc } from '@stellar/stellar-sdk';
 
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
 import { migrate } from './db/migrate.js';
 import { createPool } from './db/pool.js';
 import { Indexer } from './indexer/indexer.js';
+import { startTtlKeeperScheduler } from './indexer/keeper.js';
 import { startDailySnapshotScheduler } from './indexer/stats.js';
 import { startGdacsScheduler } from './jobs/gdacs.js';
 import { AidlineContract } from './stellar/contract.js';
@@ -41,10 +42,36 @@ const app = await buildApp(config, db, {
 });
 
 let indexer: Indexer | null = null;
+let keeperTimer: NodeJS.Timeout | null = null;
 if (config.INDEXER_ENABLED && config.AIDLINE_CONTRACT_ID) {
   const server = new rpc.Server(config.AIDLINE_RPC_URL, {
     allowHttp: config.AIDLINE_RPC_URL.startsWith('http://'),
   });
+
+  // #22: the keeper uses a separate funded key and a signed transaction.
+  // It is only started when the indexer is on, because it relies on the
+  // indexed ledger to decide which campaigns are close to expiry.
+  if (config.AIDLINE_KEEPER_SECRET) {
+    try {
+      const keeper = Keypair.fromSecret(config.AIDLINE_KEEPER_SECRET);
+      const extender = new AidlineContract(
+        server,
+        config.AIDLINE_CONTRACT_ID,
+        config.networkPassphrase,
+        keeper,
+      );
+      keeperTimer = startTtlKeeperScheduler(db, extender, app.log.child({ module: 'keeper' }), {
+        intervalMs: config.KEEPER_INTERVAL_MS,
+        campaignTtlLedgers: config.CAMPAIGN_TTL_LEDGERS,
+        thresholdLedgers: config.KEEPER_TTL_THRESHOLD_LEDGERS,
+      });
+    } catch (err) {
+      app.log.error({ err }, 'keeper disabled: AIDLINE_KEEPER_SECRET is not a valid secret key');
+    }
+  } else {
+    app.log.warn('keeper disabled: set AIDLINE_KEEPER_SECRET to extend campaign TTLs');
+  }
+
   indexer = new Indexer({
     db,
     source: server,
@@ -81,6 +108,7 @@ const webhookTimer = startWebhookDispatcher(
 
 const shutdown = async () => {
   indexer?.stop();
+  if (keeperTimer) clearInterval(keeperTimer);
   clearInterval(statsTimer);
   if (gdacsTimer) clearInterval(gdacsTimer);
   clearInterval(webhookTimer);
