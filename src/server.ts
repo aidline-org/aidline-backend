@@ -80,7 +80,7 @@ const webhookTimer = startWebhookDispatcher(
 );
 
 const shutdown = async () => {
-  indexer?.stop();
+  await indexer?.stop();
   clearInterval(statsTimer);
   if (gdacsTimer) clearInterval(gdacsTimer);
   clearInterval(webhookTimer);

@@ -253,6 +253,8 @@ describe('API', () => {
     // 404 for unknown campaign
     const missing = await app.inject({ url: '/campaigns/999/refunds' });
     expect(missing.statusCode).toBe(404);
+    const missingDonations = await app.inject({ url: '/campaigns/999/donations' });
+    expect(missingDonations.statusCode).toBe(404);
   });
 
   it('summarises platform stats', async () => {

@@ -78,6 +78,16 @@ describe('Indexer', () => {
     expect(r.rows).toEqual([{ index: 0, amount: '300' }]);
   });
 
+  it('skips a campaign with an unknown contract status without aborting the page', async () => {
+    const chain = new FakeChain();
+    const campaign = chainCampaign({ status: 'paused' as ChainCampaign['status'] });
+    chain.campaigns.set(0n, campaign);
+    chain.pages.push([events.created(0n, campaign.creator)]);
+
+    await expect(indexerFor(chain).syncOnce()).resolves.toBe(1);
+    expect((await db.query('SELECT count(*)::int AS n FROM campaigns')).rows[0].n).toBe(0);
+  });
+
   it('starts from the configured ledger, then follows the cursor', async () => {
     const chain = new FakeChain();
     const indexer = indexerFor(chain);

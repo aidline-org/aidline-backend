@@ -66,6 +66,7 @@ export interface IndexerOptions {
  */
 export class Indexer {
   private timer: NodeJS.Timeout | null = null;
+  private inFlight: Promise<void> | null = null;
   private stopped = true;
 
   constructor(private readonly opts: IndexerOptions) {}
@@ -75,20 +76,28 @@ export class Indexer {
     void this.loop();
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
+    await this.inFlight;
   }
 
   private async loop(): Promise<void> {
     if (this.stopped) return;
     let delay = this.opts.pollMs;
     try {
-      const count = await this.syncOnce();
+      const sync = this.syncOnce();
+      this.inFlight = sync.then(
+        () => undefined,
+        () => undefined,
+      );
+      const count = await sync;
       // Keep draining without waiting while there is a backlog.
       if (count === PAGE_SIZE) delay = 0;
     } catch (err) {
       this.opts.log.error({ err }, 'indexer sync failed');
+    } finally {
+      this.inFlight = null;
     }
     if (!this.stopped) this.timer = setTimeout(() => void this.loop(), delay);
   }
@@ -260,8 +269,23 @@ export class Indexer {
   private async fetchCampaigns(events: AidlineEvent[]) {
     const ids = new Set<bigint>();
     for (const ev of events) if ('campaignId' in ev) ids.add(ev.campaignId);
-    const entries = await Promise.all(
-      [...ids].map(async (id) => [id, await this.opts.contract.getCampaign(id)] as const),
+    const entries = (
+      await Promise.all(
+        [...ids].map(async (id) => {
+          const campaign = await this.opts.contract.getCampaign(id);
+          if (!['active', 'completed', 'cancelled'].includes(campaign.status)) {
+            this.opts.log.warn(
+              { campaignId: id.toString(), status: campaign.status },
+              'skipping campaign with unknown contract status',
+            );
+            return null;
+          }
+          return [id, campaign] as const;
+        }),
+      )
+    ).filter(
+      (entry): entry is readonly [bigint, Awaited<ReturnType<ContractReader['getCampaign']>>] =>
+        entry !== null,
     );
     return new Map(entries);
   }

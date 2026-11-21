@@ -154,8 +154,10 @@ export async function campaignRoutes(app: FastifyInstance) {
     return { ...campaign, milestones };
   });
 
-  app.get('/campaigns/:id/donations', async (req) => {
+  app.get('/campaigns/:id/donations', async (req, reply) => {
     const { id } = z.object({ id: z.coerce.bigint() }).parse(req.params);
+    const exists = await app.db.query('SELECT 1 FROM campaigns WHERE id = $1', [id.toString()]);
+    if (!exists.rows[0]) return notFound(reply, 'campaign');
     const q = pagination.parse(req.query);
     const { rows } = await app.db.query(
       `SELECT donor, amount, tx_hash AS "txHash", created_at AS "createdAt"

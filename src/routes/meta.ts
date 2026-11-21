@@ -78,7 +78,7 @@ export async function metaRoutes(app: FastifyInstance) {
          (SELECT count(*)::int FROM campaigns) AS campaigns,
          (SELECT count(*)::int FROM campaigns WHERE status = 'active' AND deadline >= now())
            AS "activeCampaigns",
-         (SELECT COALESCE(sum(amount), 0) FROM donations) AS "totalDonated",
+         (SELECT COALESCE(sum(raised), 0) FROM campaigns) AS "totalDonated",
          (SELECT COALESCE(sum(released), 0) FROM campaigns) AS "totalReleased",
          (SELECT COALESCE(sum(amount), 0) FROM refunds) AS "totalRefunded",
          (SELECT count(DISTINCT donor)::int FROM donations) AS donors,

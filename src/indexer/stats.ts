@@ -48,7 +48,7 @@ export async function snapshotStats(db: Db, date?: string): Promise<boolean> {
        (SELECT count(*)::int              FROM campaigns)            AS campaigns,
        (SELECT count(*)::int              FROM campaigns
           WHERE status = 'active' AND deadline >= now())             AS active_campaigns,
-       (SELECT COALESCE(sum(amount), 0)   FROM donations)            AS total_donated,
+       (SELECT COALESCE(sum(raised), 0)   FROM campaigns)            AS total_donated,
        (SELECT COALESCE(sum(released), 0) FROM campaigns)            AS total_released,
        (SELECT COALESCE(sum(amount), 0)   FROM refunds)              AS total_refunded,
        (SELECT count(DISTINCT donor)::int FROM donations)            AS donors,
