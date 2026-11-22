@@ -1,7 +1,7 @@
 import { Keypair, rpc } from '@stellar/stellar-sdk';
 
 import { buildApp } from './app.js';
-import { loadConfig } from './config.js';
+import { contractIds, loadConfig } from './config.js';
 import { migrate } from './db/migrate.js';
 import { createPool } from './db/pool.js';
 import { Indexer } from './indexer/indexer.js';
@@ -77,6 +77,7 @@ if (config.INDEXER_ENABLED && config.AIDLINE_CONTRACT_ID) {
     source: server,
     contract: new AidlineContract(server, config.AIDLINE_CONTRACT_ID, config.networkPassphrase),
     contractId: config.AIDLINE_CONTRACT_ID,
+    contractIds: contractIds(config),
     startLedger: config.INDEXER_START_LEDGER,
     pollMs: config.INDEXER_POLL_MS,
     log: app.log.child({ module: 'indexer' }),

@@ -10,6 +10,7 @@
     "migrate": "tsx --env-file-if-exists=.env src/db/migrate.ts",
     "reindex": "tsx --env-file-if-exists=.env src/indexer/reindex.ts",
     "test": "vitest run",
+    "test:e2e:indexer": "tsx --env-file-if-exists=.env test/indexer-soroban.e2e.ts",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "lint": "eslint .",
