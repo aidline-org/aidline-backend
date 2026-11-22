@@ -68,20 +68,22 @@ describe('Daily stats history', () => {
     });
   });
 
-  it('is idempotent: taking a snapshot twice on the same day does not duplicate', async () => {
-    const date = '2026-10-09';
+  it('keeps today current by upserting while leaving past days unchanged', async () => {
+    const pastDate = '2026-10-08';
+    const today = '2026-10-09';
 
-    // First run
-    const res1 = await snapshotStats(db, date);
-    expect(res1).toBe(true);
+    await snapshotStats(db, pastDate);
+    await snapshotStats(db, today);
 
-    // Second run
-    const res2 = await snapshotStats(db, date);
-    expect(res2).toBe(false); // Indicates it was a no-op
+    await db.query(`UPDATE campaigns SET raised = raised + 100 WHERE id = 0`);
+    const inserted = await snapshotStats(db, today);
+    expect(inserted).toBe(true);
 
-    // Should only have 1 row
     const history = await getStatsHistory(db);
-    expect(history).toHaveLength(1);
+    expect(history).toHaveLength(2);
+    const byDate = new Map(history.map((row) => [row.snapshotDate.slice(0, 10), row]));
+    expect(byDate.get(pastDate)?.totalDonated).toBe('500');
+    expect(byDate.get(today)?.totalDonated).toBe('600');
   });
 
   it('GET /stats/history returns time series in chronological order', async () => {
@@ -125,6 +127,35 @@ describe('Daily stats history', () => {
     const history = await getStatsHistory(db);
     expect(history[0]!.totalDonated).toBe(bigAmount.toString());
   });
+
+  it('GET /stats and a fresh snapshot return the same figures', async () => {
+    const campaign = chainCampaign({ raised: 700n, released: 200n, milestonesReleased: 1 });
+    await index(campaign, [
+      events.created(0n, campaign.creator),
+      events.donated(0n, account(), 700n),
+      events.released(0n, 0, 200n, 'ipfs://proof'),
+    ]);
+
+    app.cache.clear();
+    const statsRes = await app.inject({ url: '/stats' });
+    expect(statsRes.statusCode).toBe(200);
+    const stats = statsRes.json() as Record<string, unknown>;
+
+    await snapshotStats(db, '2026-10-16');
+    const history = await getStatsHistory(db);
+    const snapshot = history.find((row) => row.snapshotDate.startsWith('2026-10-16'));
+    expect(snapshot).toBeDefined();
+    expect({
+      campaigns: snapshot!.campaigns,
+      activeCampaigns: snapshot!.activeCampaigns,
+      totalDonated: snapshot!.totalDonated,
+      totalReleased: snapshot!.totalReleased,
+      totalRefunded: snapshot!.totalRefunded,
+      donors: snapshot!.donors,
+      verifiers: snapshot!.verifiers,
+      milestonesVerified: snapshot!.milestonesVerified,
+    }).toEqual(stats);
+  });
 });
 
 describe('startDailySnapshotScheduler', () => {
@@ -153,18 +184,18 @@ describe('startDailySnapshotScheduler', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(calls()).toBe(1);
-    expect(log.info).toHaveBeenCalledWith('daily stats snapshot taken');
+    expect(log.info).toHaveBeenCalledWith('daily stats snapshot updated');
     clearInterval(timer);
   });
 
-  it('takes the next snapshot after the 24 hour interval', async () => {
+  it('takes the next snapshot after the hourly interval', async () => {
     vi.useFakeTimers();
     const { db, calls } = fakeDb();
     const timer = startDailySnapshotScheduler(db, fakeLog());
 
     await vi.advanceTimersByTimeAsync(0);
     expect(calls()).toBe(1);
-    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
     expect(calls()).toBe(2);
     clearInterval(timer);
   });
@@ -182,7 +213,7 @@ describe('startDailySnapshotScheduler', () => {
       'daily stats snapshot failed',
     );
 
-    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
     expect(calls()).toBe(2);
     expect(log.error).toHaveBeenCalledTimes(2);
     clearInterval(timer);

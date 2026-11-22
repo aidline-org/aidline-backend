@@ -50,6 +50,9 @@ const schema = z.object({
   WEBHOOK_POLL_MS: z.coerce.number().int().min(1000).default(5000),
   WEBHOOK_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(5),
   WEBHOOK_ALLOW_PRIVATE_URLS: falseBool,
+
+  // Database connection pool.
+  DATABASE_POOL_MAX: z.coerce.number().int().min(1).default(10),
 });
 
 export type Config = z.infer<typeof schema> & { networkPassphrase: string; corsOrigins: string[] };

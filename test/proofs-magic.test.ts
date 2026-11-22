@@ -89,3 +89,33 @@ describe('POST /proofs magic byte checks', () => {
     expect(existsSync(join(config.UPLOAD_DIR, 'proofs'))).toBe(false);
   });
 });
+
+describe('immutable cache headers', () => {
+  it('sets long immutable cache headers on successful proof and upload responses', async () => {
+    const content = Buffer.concat([MAGIC['image/png'], Buffer.from('PNGDATA')]);
+    const { payload, headers } = upload('image/png', content, 'evidence.png');
+    const created = await app.inject({ method: 'POST', url: '/proofs', payload, headers });
+    expect(created.statusCode).toBe(201);
+    const proof = created.json() as { id: string; files: { url: string }[] };
+
+    const proofRes = await app.inject({ url: `/proofs/${proof.id}` });
+    expect(proofRes.statusCode).toBe(200);
+    expect(proofRes.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+
+    const fileRes = await app.inject({ url: new URL(proof.files[0]!.url).pathname });
+    expect(fileRes.statusCode).toBe(200);
+    expect(fileRes.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+  });
+
+  it('does not set long immutable cache headers on missing proof or upload', async () => {
+    const missingProof = await app.inject({
+      url: '/proofs/00000000-0000-0000-0000-000000000000',
+    });
+    expect(missingProof.statusCode).toBe(404);
+    expect(missingProof.headers['cache-control']).not.toBe('public, max-age=31536000, immutable');
+
+    const missingFile = await app.inject({ url: '/uploads/proofs/missing/file.png' });
+    expect(missingFile.statusCode).toBe(404);
+    expect(missingFile.headers['cache-control']).not.toBe('public, max-age=31536000, immutable');
+  });
+});

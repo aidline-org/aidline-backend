@@ -19,7 +19,7 @@ async function connectWithRetry(url: string, maxAttempts = 10, baseMs = 1000) {
   while (true) {
     attempt += 1;
     try {
-      const pool = createPool(url);
+      const pool = createPool(url, config.DATABASE_POOL_MAX);
       // Probe the connection
       await pool.query('SELECT 1');
       return pool;

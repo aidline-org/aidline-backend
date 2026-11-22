@@ -89,6 +89,7 @@ describe('API', () => {
 
     const get = await app.inject({ url: `/metadata/${id}` });
     expect(get.json()).toMatchObject({ title: metadata.title, location: metadata.location });
+    expect(get.headers['cache-control']).toBe('public, max-age=31536000, immutable');
   });
 
   it('rejects invalid metadata with field level errors', async () => {

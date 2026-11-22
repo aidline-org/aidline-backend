@@ -23,6 +23,7 @@ describe('loadConfig', () => {
       WEBHOOK_POLL_MS: 5000,
       WEBHOOK_MAX_ATTEMPTS: 5,
       WEBHOOK_ALLOW_PRIVATE_URLS: false,
+      DATABASE_POOL_MAX: 10,
     });
     expect(config.INDEXER_START_LEDGER).toBeUndefined();
   });
@@ -80,5 +81,14 @@ describe('loadConfig', () => {
 
   it('rejects a boolean flag that is not true or false', () => {
     expect(() => loadConfig({ INDEXER_ENABLED: 'yes' })).toThrow();
+  });
+
+  it('uses DATABASE_POOL_MAX default and parses configured value', () => {
+    expect(loadConfig({}).DATABASE_POOL_MAX).toBe(10);
+    expect(loadConfig({ DATABASE_POOL_MAX: '4' }).DATABASE_POOL_MAX).toBe(4);
+  });
+
+  it('rejects DATABASE_POOL_MAX below 1', () => {
+    expect(() => loadConfig({ DATABASE_POOL_MAX: '0' })).toThrow();
   });
 });

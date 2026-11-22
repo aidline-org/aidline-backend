@@ -71,41 +71,29 @@ export async function proofRoutes(app: FastifyInstance) {
     const raw: Record<string, string> = {};
     const files: { name: string; url: string; size: number; type: string }[] = [];
     const written: string[] = [];
+    const dir = join(app.config.UPLOAD_DIR, 'proofs', id);
 
-      try {
-        for await (const part of req.parts()) {
-          if (part.type === 'field') {
-            raw[part.fieldname] = String(part.value);
-            continue;
-          }
-          const extension = EXTENSIONS[part.mimetype];
-          if (!extension || files.length >= MAX_FILES) {
-            part.file.resume();
-            return reply.code(400).send({
-              error: 'invalid_file',
-              message: `Up to ${MAX_FILES} JPEG, PNG, WebP or PDF files are allowed`,
-            });
-          }
+    try {
+      for await (const part of req.parts()) {
+        if (part.type === 'field') {
+          raw[part.fieldname] = String(part.value);
+          continue;
+        }
+        const extension = EXTENSIONS[part.mimetype];
+        if (!extension || files.length >= MAX_FILES) {
+          part.file.resume();
+          return reply.code(400).send({
+            error: 'invalid_file',
+            message: `Up to ${MAX_FILES} JPEG, PNG, WebP or PDF files are allowed`,
+          });
+        }
 
-          // The declared mimetype is untrusted. Check the real bytes before storing.
-          const { header, collected } = await readHeader(part.file, HEADER_BYTES);
-          if (detectMimeType(header) !== part.mimetype) {
-            part.file.resume();
-            return reply.code(400).send({
-              error: 'invalid_file',
-              message: 'File contents do not match the declared type',
-            });
-          }
-
-          await mkdir(dir, { recursive: true });
-          const name = `${files.length}${extension}`;
-          const path = join(dir, name);
-          written.push(path);
-          await pipeline(Readable.from(withPrefix(collected, part.file)), createWriteStream(path));
-          files.push({
-            name: part.filename,
-            type: part.mimetype,
-            url: `${app.config.PUBLIC_BASE_URL}/uploads/proofs/${id}/${name}`,
+        const { header, collected } = await readHeader(part.file, HEADER_BYTES);
+        if (detectMimeType(header) !== part.mimetype) {
+          part.file.resume();
+          return reply.code(400).send({
+            error: 'invalid_file',
+            message: 'File contents do not match the declared type',
           });
         }
 
@@ -124,16 +112,17 @@ export async function proofRoutes(app: FastifyInstance) {
       }
 
       const f = fields.parse(raw);
-      if (f.campaignId.toString() !== campaignId) {
-        return reply
-          .code(201)
-          .send({ id, uri: `${app.config.PUBLIC_BASE_URL}/proofs/${id}`, files });
-      } finally {
-        // Anything still listed here belongs to a rejected upload.
-        await Promise.all(written.map((key) => app.storage.delete(key)));
-      }
-    },
-  );
+      await app.db.query(
+        `INSERT INTO proofs (id, campaign_id, milestone_index, note, files)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [id, f.campaignId.toString(), f.milestoneIndex, f.note, JSON.stringify(files)],
+      );
+      return reply.code(201).send({ id, uri: `${app.config.PUBLIC_BASE_URL}/proofs/${id}`, files });
+    } catch (err) {
+      await Promise.all(written.map((path) => unlink(path).catch(() => undefined)));
+      throw err;
+    }
+  });
 
   app.get('/proofs/:id', async (req, reply) => {
     const { id } = z.object({ id: z.uuid() }).parse(req.params);
@@ -143,6 +132,9 @@ export async function proofRoutes(app: FastifyInstance) {
        FROM proofs WHERE id = $1`,
       [id],
     );
-    return rows[0] ?? notFound(reply, 'proof');
+    const row = rows[0];
+    if (!row) return notFound(reply, 'proof');
+    reply.header('cache-control', 'public, max-age=31536000, immutable');
+    return row;
   });
 }

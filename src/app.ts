@@ -94,7 +94,10 @@ export async function buildApp(
         { name: 'donors', description: 'Donor profiles and donation history' },
         { name: 'alerts', description: 'Recent GDACS disaster alerts' },
         { name: 'webhooks', description: 'Milestone release webhook subscriptions' },
-        { name: 'events', description: 'Live stream of donations, releases, refunds and campaigns' },
+        {
+          name: 'events',
+          description: 'Live stream of donations, releases, refunds and campaigns',
+        },
       ],
     },
   });
@@ -114,7 +117,10 @@ export async function buildApp(
     const key = (req.params as { '*': string })['*'];
     const object = await app.storage.get(key);
     if (!object) return notFound(reply, 'file');
-    return reply.header('content-type', object.contentType).send(object.body);
+    return reply
+      .header('content-type', object.contentType)
+      .header('cache-control', 'public, max-age=31536000, immutable')
+      .send(object.body);
   });
 
   app.setErrorHandler((err, _req, reply) => {

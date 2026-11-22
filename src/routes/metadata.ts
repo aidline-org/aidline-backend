@@ -33,20 +33,19 @@ export async function metadataRoutes(app: FastifyInstance) {
       `INSERT INTO campaign_metadata
          (id, title, summary, description, location, organizer, category, image_url)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          id,
-          m.title,
-          m.summary,
-          m.description,
-          m.location,
-          m.organizer ?? null,
-          m.category ?? null,
-          m.imageUrl ?? null,
-        ],
-      );
-      return reply.code(201).send({ id, uri: `${app.config.PUBLIC_BASE_URL}/metadata/${id}` });
-    },
-  );
+      [
+        id,
+        m.title,
+        m.summary,
+        m.description,
+        m.location,
+        m.organizer ?? null,
+        m.category ?? null,
+        m.imageUrl ?? null,
+      ],
+    );
+    return reply.code(201).send({ id, uri: `${app.config.PUBLIC_BASE_URL}/metadata/${id}` });
+  });
 
   app.get('/metadata/:id', async (req, reply) => {
     const { id } = z.object({ id: z.uuid() }).parse(req.params);
@@ -57,6 +56,9 @@ export async function metadataRoutes(app: FastifyInstance) {
        FROM campaign_metadata WHERE id = $1`,
       [id],
     );
-    return rows[0] ?? notFound(reply, 'metadata');
+    const row = rows[0];
+    if (!row) return notFound(reply, 'metadata');
+    reply.header('cache-control', 'public, max-age=31536000, immutable');
+    return row;
   });
 }

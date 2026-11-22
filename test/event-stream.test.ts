@@ -28,7 +28,7 @@ async function startApp(overrides: Record<string, string> = {}): Promise<Started
     STREAM_HEARTBEAT_MS: '1000',
     ...overrides,
   });
-  const db = createPool(config.DATABASE_URL);
+  const db = createPool(config.DATABASE_URL, config.DATABASE_POOL_MAX);
   await migrate(db, () => {});
   const app = await buildApp(config, db, { logger: false });
   await app.listen({ port: 0, host: '127.0.0.1' });
