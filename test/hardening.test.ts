@@ -99,6 +99,37 @@ describe('request ids in error responses', () => {
   });
 });
 
+describe('database outages', () => {
+  it('returns 503 with Retry-After when the pool refuses connections', async () => {
+    const refused = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:5433'), {
+      code: 'ECONNREFUSED',
+    });
+    const spy = vi.spyOn(db, 'query').mockRejectedValueOnce(refused);
+    try {
+      const res = await app.inject({ url: '/releases' });
+      expect(res.statusCode).toBe(503);
+      expect(res.json()).toMatchObject({ error: 'unavailable' });
+      expect(res.headers['retry-after']).toBe('10');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('still returns 500 for other database errors', async () => {
+    const failed = Object.assign(new Error('relation "campaigns" does not exist'), {
+      code: '42P01',
+    });
+    const spy = vi.spyOn(db, 'query').mockRejectedValueOnce(failed);
+    try {
+      const res = await app.inject({ url: '/releases' });
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toMatchObject({ error: 'internal_error' });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
 describe('proof upload file names', () => {
   const fields = [
     { name: 'campaignId', value: '0' },

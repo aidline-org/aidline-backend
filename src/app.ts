@@ -14,7 +14,7 @@ import { ZodError } from 'zod';
 import { ResponseCache } from './lib/cache.js';
 import { EventStreamHub } from './lib/stream.js';
 import type { Config } from './config.js';
-import type { Db } from './db/pool.js';
+import { isConnectionError, type Db } from './db/pool.js';
 import { notFound } from './lib/http.js';
 import { registerMetrics } from './metrics.js';
 import { alertRoutes } from './routes/alerts.js';
@@ -32,6 +32,7 @@ import { createStorage, type StorageDriver } from './storage/index.js';
 const gzipAsync = promisify(gzip);
 const COMPRESSIBLE_TYPES = /^(application\/json|application\/javascript|text\/)/;
 const MIN_COMPRESS_BYTES = 1024;
+const DATABASE_RETRY_AFTER_SECONDS = '10';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -70,6 +71,9 @@ export async function buildApp(
     contentSecurityPolicy: false,
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   });
+  if (config.corsOrigins === true && config.NODE_ENV === 'production') {
+    app.log.warn('CORS_ORIGINS is "*": every origin is allowed');
+  }
   await app.register(cors, { origin: config.corsOrigins });
   await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
   await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024, files: 5 } });
@@ -124,6 +128,13 @@ export async function buildApp(
         message: 'Request is invalid',
         issues: err.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
       });
+    }
+    if (isConnectionError(err)) {
+      app.log.error(err);
+      return reply
+        .code(503)
+        .header('Retry-After', DATABASE_RETRY_AFTER_SECONDS)
+        .send({ error: 'unavailable', message: 'Database unavailable, try again later' });
     }
     const status = (err as { statusCode?: number }).statusCode ?? 500;
     if (status >= 500) app.log.error(err);

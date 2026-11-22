@@ -8,12 +8,15 @@ Copy [`.env.example`](../.env.example) to `.env` for local development.
 
 | Variable          | Default                 | Notes                                                                                                              |
 | ----------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `NODE_ENV`        | `development`           | Set to `production` to require the contract and token ids at boot                                                  |
 | `PORT`            | `4000`                  | Port the API listens on                                                                                            |
 | `HOST`            | `0.0.0.0`               | Interface to bind                                                                                                  |
 | `PUBLIC_BASE_URL` | `http://localhost:4000` | Public URL of this service. Used to build the metadata and proof URIs stored on chain. A trailing slash is removed |
-| `CORS_ORIGINS`    | `http://localhost:3000` | Comma separated list of allowed frontend origins                                                                   |
+| `CORS_ORIGINS`    | `http://localhost:3000` | Comma separated full origins, or `*` alone to allow every origin (warns in production)                             |
 | `UPLOAD_DIR`      | `uploads`               | Directory for proof files                                                                                          |
 | `METRICS_ENABLED` | `true`                  | Serve Prometheus metrics at `GET /metrics`. Restrict that path at your proxy in production                         |
+
+Each `CORS_ORIGINS` entry must be a full origin such as `https://app.example.org`, with no path or trailing slash. An invalid entry stops the server at startup.
 
 ## Database
 
@@ -25,12 +28,12 @@ For a hosted provider such as Neon, append `?sslmode=require` to the connection 
 
 ## Stellar and the contract
 
-| Variable              | Default                               | Notes                                                               |
-| --------------------- | ------------------------------------- | ------------------------------------------------------------------- |
-| `AIDLINE_NETWORK`     | `testnet`                             | `testnet`, `mainnet` or `futurenet`. Selects the network passphrase |
-| `AIDLINE_RPC_URL`     | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint                                                |
-| `AIDLINE_CONTRACT_ID` | empty                                 | Contract to index. The indexer is off when this is empty            |
-| `AIDLINE_TOKEN_ID`    | empty                                 | Token the contract raises in. Keep it in sync with the frontend     |
+| Variable              | Default                               | Notes                                                                    |
+| --------------------- | ------------------------------------- | ------------------------------------------------------------------------ |
+| `AIDLINE_NETWORK`     | `testnet`                             | `testnet`, `mainnet` or `futurenet`. Selects the network passphrase      |
+| `AIDLINE_RPC_URL`     | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint                                                     |
+| `AIDLINE_CONTRACT_ID` | empty                                 | Contract to index. The indexer is off when empty; required in production |
+| `AIDLINE_TOKEN_ID`    | empty                                 | Token the contract raises in. Required in production                     |
 
 ## Indexer
 
