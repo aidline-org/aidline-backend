@@ -49,7 +49,7 @@ export async function migrate(db: Db, log: (msg: string) => void = console.log):
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const config = loadConfig();
-  const db = createPool(config.DATABASE_URL);
+  const db = createPool(config.DATABASE_URL, config.DATABASE_POOL_MAX);
   migrate(db)
     .then(() => db.end())
     .catch((err) => {

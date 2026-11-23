@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 
-import { getStatsHistory } from '../indexer/stats.js';
+import { getPlatformStats, getStatsHistory } from '../indexer/stats.js';
 import { setCacheHeaders } from '../lib/cache.js';
 import { amount, nullableDateTime, nullableInteger } from '../lib/openapi.js';
 
@@ -224,19 +224,7 @@ export async function metaRoutes(app: FastifyInstance) {
       setCacheHeaders(reply, cached !== undefined);
       if (cached !== undefined) return cached;
 
-      const { rows } = await app.db.query(
-        `SELECT
-         (SELECT count(*)::int FROM campaigns) AS campaigns,
-         (SELECT count(*)::int FROM campaigns WHERE status = 'active' AND deadline >= now())
-           AS "activeCampaigns",
-         (SELECT COALESCE(sum(raised), 0) FROM campaigns) AS "totalDonated",
-         (SELECT COALESCE(sum(released), 0) FROM campaigns) AS "totalReleased",
-         (SELECT COALESCE(sum(amount), 0) FROM refunds) AS "totalRefunded",
-         (SELECT count(DISTINCT donor)::int FROM donations) AS donors,
-         (SELECT count(*)::int FROM verifiers WHERE active) AS verifiers,
-         (SELECT count(*)::int FROM milestone_releases) AS "milestonesVerified"`,
-      );
-      const stats = rows[0];
+      const stats = await getPlatformStats(app.db);
       app.cache.set(STATS_CACHE_KEY, stats);
       return stats;
     },

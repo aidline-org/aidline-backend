@@ -7,15 +7,6 @@ pg.types.setTypeParser(pg.types.builtins.DATE, (v) => v);
 
 export type Db = pg.Pool;
 
-export interface PoolOptions {
-  statementTimeoutMs?: number;
-}
-
-export function createPool(connectionString: string, options: PoolOptions = {}): Db {
-  const statementTimeoutMs = options.statementTimeoutMs;
-  return new pg.Pool({
-    connectionString,
-    max: 10,
-    ...(statementTimeoutMs && statementTimeoutMs > 0 ? { statement_timeout: statementTimeoutMs } : {}),
-  });
+export function createPool(connectionString: string, max = 10): Db {
+  return new pg.Pool({ connectionString, max });
 }

@@ -32,6 +32,8 @@ export async function connectWithRetry(
     attempt += 1;
     const pool = create(url);
     try {
+      const pool = createPool(url, config.DATABASE_POOL_MAX);
+      // Probe the connection
       await pool.query('SELECT 1');
       return pool;
     } catch (err) {

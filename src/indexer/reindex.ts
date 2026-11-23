@@ -7,7 +7,7 @@ import { AidlineContract } from '../stellar/contract.js';
 
 const config = loadConfig();
 if (!config.AIDLINE_CONTRACT_ID) throw new Error('AIDLINE_CONTRACT_ID is required for reindexing');
-const db = createPool(config.DATABASE_URL);
+const db = createPool(config.DATABASE_URL, config.DATABASE_POOL_MAX);
 await migrate(db);
 const server = new rpc.Server(config.AIDLINE_RPC_URL, {
   allowHttp: config.AIDLINE_RPC_URL.startsWith('http://'),

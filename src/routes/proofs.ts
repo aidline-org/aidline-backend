@@ -43,20 +43,7 @@ export async function proofRoutes(app: FastifyInstance) {
     const files: { name: string; url: string; size: number; type: string }[] = [];
     // Keys written by this request. Whatever is still listed when it fails is removed.
     const written: string[] = [];
-    try {
-      for await (const part of req.parts()) {
-        if (part.type === 'field') {
-          raw[part.fieldname] = String(part.value);
-          continue;
-        }
-        const extension = EXTENSIONS[part.mimetype];
-        if (!extension || files.length >= MAX_FILES) {
-          part.file.resume();
-          return reply.code(400).send({
-            error: 'invalid_file',
-            message: `Up to ${MAX_FILES} JPEG, PNG, WebP or PDF files are allowed`,
-          });
-        }
+    const dir = join(app.config.UPLOAD_DIR, 'proofs', id);
 
     try {
       for await (const part of req.parts()) {
@@ -73,9 +60,9 @@ export async function proofRoutes(app: FastifyInstance) {
           });
         }
 
-        // The declared mimetype is untrusted. Check the real bytes before storing.
-        const body = await readAll(part.file);
-        if (detectMimeType(body.subarray(0, HEADER_BYTES)) !== part.mimetype) {
+        const { header, collected } = await readHeader(part.file, HEADER_BYTES);
+        if (detectMimeType(header) !== part.mimetype) {
+          part.file.resume();
           return reply.code(400).send({
             error: 'invalid_file',
             message: 'File contents do not match the declared type',
@@ -100,11 +87,10 @@ export async function proofRoutes(app: FastifyInstance) {
          VALUES ($1, $2, $3, $4, $5)`,
         [id, f.campaignId.toString(), f.milestoneIndex, f.note, JSON.stringify(files)],
       );
-      written.length = 0;
       return reply.code(201).send({ id, uri: `${app.config.PUBLIC_BASE_URL}/proofs/${id}`, files });
-    } finally {
-      // Anything still listed here belongs to a rejected upload.
-      await Promise.all(written.map((key) => app.storage.delete(key)));
+    } catch (err) {
+      await Promise.all(written.map((path) => unlink(path).catch(() => undefined)));
+      throw err;
     }
   });
 
