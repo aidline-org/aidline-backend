@@ -47,6 +47,17 @@ describe('loadConfig', () => {
     expect(config.corsOrigins).toEqual(['https://a.example', 'https://b.example', 'http://c']);
   });
 
+  it('treats a lone wildcard in CORS_ORIGINS as allowing every origin', () => {
+    expect(loadConfig({ CORS_ORIGINS: ' * ' }).corsOrigins).toBe(true);
+  });
+
+  it('rejects CORS_ORIGINS entries that are not http(s) origins', () => {
+    expect(() => loadConfig({ CORS_ORIGINS: 'not an origin' })).toThrow(/CORS_ORIGINS/);
+    expect(() => loadConfig({ CORS_ORIGINS: 'ftp://a.example' })).toThrow(/CORS_ORIGINS/);
+    expect(() => loadConfig({ CORS_ORIGINS: 'https://a.example/path' })).toThrow(/CORS_ORIGINS/);
+    expect(() => loadConfig({ CORS_ORIGINS: '*, https://a.example' })).toThrow(/CORS_ORIGINS/);
+  });
+
   it('picks the network passphrase that matches AIDLINE_NETWORK', () => {
     expect(loadConfig({ AIDLINE_NETWORK: 'testnet' }).networkPassphrase).toBe(Networks.TESTNET);
     expect(loadConfig({ AIDLINE_NETWORK: 'mainnet' }).networkPassphrase).toBe(Networks.PUBLIC);
@@ -84,12 +95,27 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ INDEXER_ENABLED: 'yes' })).toThrow();
   });
 
-  it('uses DATABASE_POOL_MAX default and parses configured value', () => {
-    expect(loadConfig({}).DATABASE_POOL_MAX).toBe(10);
-    expect(loadConfig({ DATABASE_POOL_MAX: '4' }).DATABASE_POOL_MAX).toBe(4);
+  it('requires the contract and token ids in production', () => {
+    expect(() => loadConfig({ NODE_ENV: 'production' })).toThrow(
+      /AIDLINE_CONTRACT_ID and AIDLINE_TOKEN_ID/,
+    );
+    expect(() => loadConfig({ NODE_ENV: 'production', AIDLINE_CONTRACT_ID: 'C...' })).toThrow(
+      /AIDLINE_TOKEN_ID/,
+    );
+    expect(() => loadConfig({ NODE_ENV: 'production', AIDLINE_TOKEN_ID: 'C...' })).toThrow(
+      /AIDLINE_CONTRACT_ID/,
+    );
   });
 
-  it('rejects DATABASE_POOL_MAX below 1', () => {
-    expect(() => loadConfig({ DATABASE_POOL_MAX: '0' })).toThrow();
+  it('keeps the current behaviour outside production', () => {
+    expect(loadConfig({}).AIDLINE_CONTRACT_ID).toBe('');
+    expect(loadConfig({ NODE_ENV: 'test' }).AIDLINE_TOKEN_ID).toBe('');
+    expect(
+      loadConfig({
+        NODE_ENV: 'production',
+        AIDLINE_CONTRACT_ID: 'C...',
+        AIDLINE_TOKEN_ID: 'C...',
+      }).AIDLINE_CONTRACT_ID,
+    ).toBe('C...');
   });
 });

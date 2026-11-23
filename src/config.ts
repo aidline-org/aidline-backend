@@ -12,6 +12,7 @@ const falseBool = z
   .transform((v) => v === 'true');
 
 const schema = z.object({
+  NODE_ENV: z.string().default('development'),
   PORT: z.coerce.number().int().default(4000),
   HOST: z.string().default('0.0.0.0'),
   PUBLIC_BASE_URL: z.url().default('http://localhost:4000'),
@@ -58,7 +59,10 @@ const schema = z.object({
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).default(10),
 });
 
-export type Config = z.infer<typeof schema> & { networkPassphrase: string; corsOrigins: string[] };
+export type Config = z.infer<typeof schema> & {
+  networkPassphrase: string;
+  corsOrigins: string[] | true;
+};
 
 export function contractIds(config: Config): string[] {
   const ids = config.AIDLINE_CONTRACT_IDS.split(',')
@@ -75,6 +79,25 @@ const passphrases = {
   futurenet: Networks.FUTURENET,
 } as const;
 
+function parseCorsOrigins(value: string): string[] {
+  const entries = value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  for (const entry of entries) {
+    let url: URL;
+    try {
+      url = new URL(entry);
+    } catch {
+      throw new Error(`CORS_ORIGINS contains an invalid origin: ${entry}`);
+    }
+    if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.origin !== entry) {
+      throw new Error(`CORS_ORIGINS contains an invalid origin: ${entry}`);
+    }
+  }
+  return entries;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // Treat empty strings in .env as unset so defaults apply.
   const cleaned = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== ''));
@@ -87,10 +110,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       'S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY are required when STORAGE_DRIVER=s3',
     );
   }
+  if (parsed.NODE_ENV === 'production') {
+    const missing: string[] = [];
+    if (!parsed.AIDLINE_CONTRACT_ID) missing.push('AIDLINE_CONTRACT_ID');
+    if (!parsed.AIDLINE_TOKEN_ID) missing.push('AIDLINE_TOKEN_ID');
+    if (missing.length > 0) {
+      throw new Error(`${missing.join(' and ')} must be set when NODE_ENV=production`);
+    }
+  }
+  const corsValue = parsed.CORS_ORIGINS.trim();
   return {
     ...parsed,
     PUBLIC_BASE_URL: parsed.PUBLIC_BASE_URL.replace(/\/$/, ''),
     networkPassphrase: passphrases[parsed.AIDLINE_NETWORK],
-    corsOrigins: parsed.CORS_ORIGINS.split(',').map((s) => s.trim()),
+    corsOrigins: corsValue === '*' ? true : parseCorsOrigins(corsValue),
   };
 }

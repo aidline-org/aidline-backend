@@ -54,6 +54,8 @@ docker run -p 4000:4000 \
 
 The same image works on Fly.io, Railway, ECS, Cloud Run and similar hosts. Use [`docker-compose.yml`](../docker-compose.yml) for a local API plus Postgres.
 
+The container runs the API as the unprivileged `node` user, and `/app/uploads` is owned by that user. If you mount a host directory or volume at `UPLOAD_DIR`, make sure `node` (uid 1000) can write to it. The image has a `HEALTHCHECK` that calls `/health` every 30 seconds.
+
 ## Choosing `INDEXER_START_LEDGER`
 
 On a fresh database the indexer starts at `INDEXER_START_LEDGER`. Set it to the ledger of the contract deployment so it does not miss early events. Soroban RPC only keeps a limited window of history, so the indexer clamps the value to the oldest ledger the RPC still has. If you leave it empty the indexer starts about 1000 ledgers back from the latest.

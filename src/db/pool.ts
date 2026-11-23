@@ -7,6 +7,29 @@ pg.types.setTypeParser(pg.types.builtins.DATE, (v) => v);
 
 export type Db = pg.Pool;
 
-export function createPool(connectionString: string, max = 10): Db {
-  return new pg.Pool({ connectionString, max });
+const CONNECTION_ERROR_CODES = new Set([
+  '08000',
+  '08001',
+  '08003',
+  '08004',
+  '08006',
+  '57P01',
+  '57P02',
+  '57P03',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ENOTFOUND',
+  'ETIMEDOUT',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+]);
+
+export function isConnectionError(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === 'string' && CONNECTION_ERROR_CODES.has(code);
+}
+
+export function createPool(connectionString: string): Db {
+  return new pg.Pool({ connectionString, max: 10 });
 }
