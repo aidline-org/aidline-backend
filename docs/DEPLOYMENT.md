@@ -58,6 +58,16 @@ The same image works on Fly.io, Railway, ECS, Cloud Run and similar hosts. Use [
 
 On a fresh database the indexer starts at `INDEXER_START_LEDGER`. Set it to the ledger of the contract deployment so it does not miss early events. Soroban RPC only keeps a limited window of history, so the indexer clamps the value to the oldest ledger the RPC still has. If you leave it empty the indexer starts about 1000 ledgers back from the latest.
 
+## Stats history backfill
+
+Daily stats snapshots are captured once per UTC day. If the database is recreated or snapshotting starts late, rebuild missing days from event history:
+
+```sh
+npm run stats:backfill
+```
+
+The command inserts only missing `daily_stats_snapshots` rows from the first event day through yesterday (UTC). It does not modify existing rows. Totals for donations, releases, refunds, donors, campaigns and milestones are rebuilt from event/history tables. `active_campaigns` is approximated for past days from campaign creation/deadline and current non-cancelled status because status history is not stored as a daily timeline. `verifiers` uses the current active verifier count because verifier history is not event-sourced by day.
+
 ## Health and monitoring
 
 | Endpoint  | Use                                                                               |

@@ -1,3 +1,6 @@
+import { readdir } from 'node:fs/promises';
+import { join } from 'node:path';
+
 import { Keypair } from '@stellar/stellar-sdk';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -146,6 +149,91 @@ describe('proof upload file names', () => {
     const upload = await app.inject({ method: 'POST', url: '/proofs', payload, headers });
     expect(upload.statusCode).toBe(201);
     expect(upload.json().files[0].url.endsWith(`/0${extension}`)).toBe(true);
+  });
+});
+
+describe('proof upload limits and cleanup', () => {
+  const fields = [
+    { name: 'campaignId', value: '0' },
+    { name: 'milestoneIndex', value: '0' },
+    { name: 'note', value: 'Water tanks delivered to 3 camps' },
+  ];
+  const png = () => ({
+    name: 'files',
+    filename: 'tank.png',
+    contentType: 'image/png',
+    content: Buffer.concat([MAGIC['image/png'], Buffer.from('DATA')]),
+  });
+
+  /** Every file under a directory. A rejected upload must leave this list unchanged. */
+  async function storedFiles(dir: string): Promise<string[]> {
+    const found: string[] = [];
+    for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) found.push(...(await storedFiles(path)));
+      else found.push(path);
+    }
+    return found.sort();
+  }
+
+  it('rejects a sixth file and keeps none of the files before it', async () => {
+    const before = await storedFiles(config.UPLOAD_DIR);
+    const { payload, headers } = multipartBody([
+      ...fields,
+      ...Array.from({ length: 6 }, () => png()),
+    ]);
+    const res = await app.inject({ method: 'POST', url: '/proofs', payload, headers });
+    expect(res.statusCode).toBe(413);
+    expect(await storedFiles(config.UPLOAD_DIR)).toEqual(before);
+  });
+
+  it('rejects an unsupported type after a valid file and removes the valid file', async () => {
+    const before = await storedFiles(config.UPLOAD_DIR);
+    const { payload, headers } = multipartBody([
+      ...fields,
+      png(),
+      {
+        name: 'files',
+        filename: 'notes.txt',
+        contentType: 'text/plain',
+        content: Buffer.from('hello'),
+      },
+    ]);
+    const res = await app.inject({ method: 'POST', url: '/proofs', payload, headers });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'invalid_file' });
+    expect(await storedFiles(config.UPLOAD_DIR)).toEqual(before);
+  });
+
+  it('rejects invalid fields after a valid file and removes the file', async () => {
+    const before = await storedFiles(config.UPLOAD_DIR);
+    const { payload, headers } = multipartBody([
+      png(),
+      { name: 'campaignId', value: '0' },
+      { name: 'milestoneIndex', value: '0' },
+      { name: 'note', value: 'too short' },
+    ]);
+    const res = await app.inject({ method: 'POST', url: '/proofs', payload, headers });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'validation_error' });
+    expect(await storedFiles(config.UPLOAD_DIR)).toEqual(before);
+  });
+
+  it('rejects a file whose bytes do not match its declared type and stores nothing', async () => {
+    const before = await storedFiles(config.UPLOAD_DIR);
+    const { payload, headers } = multipartBody([
+      ...fields,
+      {
+        name: 'files',
+        filename: 'fake.png',
+        contentType: 'image/png',
+        content: Buffer.from('not an image at all'),
+      },
+    ]);
+    const res = await app.inject({ method: 'POST', url: '/proofs', payload, headers });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'invalid_file' });
+    expect(await storedFiles(config.UPLOAD_DIR)).toEqual(before);
   });
 });
 

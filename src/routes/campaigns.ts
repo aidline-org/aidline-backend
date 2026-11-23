@@ -5,6 +5,42 @@ import { csvDocument, csvRow } from '../lib/csv.js';
 import { notFound, pagination } from '../lib/http.js';
 import { documentRoute } from '../lib/openapi.js';
 
+function toRelativePath(value: string): string | null {
+  if (!value) return null;
+  if (!/^https?:\/\//i.test(value)) return value.replace(/^\/+/, '');
+  try {
+    const url = new URL(value);
+    const match = url.pathname.match(/\/uploads\/(.+)$/);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeProofFiles<T>(proof: T, base: string): T {
+  if (!proof || typeof proof !== 'object') return proof;
+  const p = proof as Record<string, unknown>;
+  const files = p.files;
+  if (!Array.isArray(files)) return proof;
+  return {
+    ...p,
+    files: files.map((file) => {
+      if (!file || typeof file !== 'object') return file;
+      const f = file as Record<string, unknown>;
+      const url = typeof f.url === 'string' ? f.url : '';
+      const thumb = typeof f.thumbnailUrl === 'string' ? f.thumbnailUrl : '';
+      const key = toRelativePath(url);
+      const thumbKey = toRelativePath(thumb);
+      return {
+        ...f,
+        ...(key ? { url: `${base}/uploads/${key}` } : {}),
+        ...(thumbKey ? { thumbnailUrl: `${base}/uploads/${thumbKey}` } : {}),
+      };
+    }),
+  } as T;
+}
+
+
 const campaignIdParam = z.object({ id: z.coerce.bigint() });
 
 const SORT_MAP = {
@@ -36,11 +72,18 @@ const CAMPAIGN_COLUMNS = `
   c.id, c.kind, ${STATUS_SQL} AS status, c.creator, c.beneficiary, c.verifier,
   c.goal, c.raised, c.released, c.milestones, c.milestones_released AS "milestonesReleased",
   c.deadline, c.metadata_uri AS "metadataUri", c.created_at AS "createdAt",
-  (SELECT count(DISTINCT d.donor)::int FROM donations d WHERE d.campaign_id = c.id) AS "donorCount",
+  COALESCE(dc.donor_count, 0) AS "donorCount",
   CASE WHEN m.id IS NULL THEN NULL ELSE json_build_object(
     'title', m.title, 'summary', m.summary, 'location', m.location, 'organizer', m.organizer,
     'category', m.category, 'imageUrl', m.image_url
   ) END AS metadata`;
+
+const DONOR_COUNTS_JOIN = `
+  LEFT JOIN (
+    SELECT campaign_id, count(DISTINCT donor)::int AS donor_count
+    FROM donations
+    GROUP BY campaign_id
+  ) dc ON dc.campaign_id = c.id`;
 
 const CSV_HEADERS = [
   'type',
@@ -118,7 +161,9 @@ export async function campaignRoutes(app: FastifyInstance) {
     params.push(q.limit, q.offset);
     const { rows } = await app.db.query(
       `SELECT ${CAMPAIGN_COLUMNS}, count(*) OVER()::int AS total
-       FROM campaigns c LEFT JOIN campaign_metadata m ON m.id = c.metadata_id
+       FROM campaigns c
+       LEFT JOIN campaign_metadata m ON m.id = c.metadata_id
+       ${DONOR_COUNTS_JOIN}
        ${whereSql}
        ORDER BY ${orderBy}
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -132,7 +177,9 @@ export async function campaignRoutes(app: FastifyInstance) {
     const { id } = campaignIdParam.parse(req.params);
     const { rows } = await app.db.query(
       `SELECT ${CAMPAIGN_COLUMNS}, m.description AS "metadataDescription"
-       FROM campaigns c LEFT JOIN campaign_metadata m ON m.id = c.metadata_id
+       FROM campaigns c
+       LEFT JOIN campaign_metadata m ON m.id = c.metadata_id
+       ${DONOR_COUNTS_JOIN}
        WHERE c.id = $1`,
       [id.toString()],
     );
@@ -148,6 +195,7 @@ export async function campaignRoutes(app: FastifyInstance) {
        WHERE r.campaign_id = $1`,
       [id.toString()],
     );
+    const base = app.config.PUBLIC_BASE_URL;
     const byIndex = new Map(releases.rows.map((r) => [r.index, r]));
     const milestones = (row.milestones as string[]).map((amount, index) => {
       const release = byIndex.get(index);
@@ -158,7 +206,7 @@ export async function campaignRoutes(app: FastifyInstance) {
         releasedAt: release?.releasedAt ?? null,
         txHash: release?.txHash ?? null,
         proofUri: release?.proofUri ?? null,
-        proof: release?.proof ?? null,
+        proof: release?.proof ? normalizeProofFiles(release.proof, base) : null,
       };
     });
 
@@ -338,6 +386,7 @@ export async function campaignRoutes(app: FastifyInstance) {
        LIMIT $2 OFFSET $3`,
       [id.toString(), q.limit, q.offset],
     );
-    return { items: rows };
+    const base = app.config.PUBLIC_BASE_URL;
+    return { items: rows.map((r) => ({ ...r, proof: r.proof ? normalizeProofFiles(r.proof, base) : null })) };
   });
 }

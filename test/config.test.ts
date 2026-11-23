@@ -10,6 +10,7 @@ describe('loadConfig', () => {
       PORT: 4000,
       HOST: '0.0.0.0',
       PUBLIC_BASE_URL: 'http://localhost:4000',
+      DATABASE_STATEMENT_TIMEOUT_MS: 5000,
       AIDLINE_NETWORK: 'testnet',
       AIDLINE_RPC_URL: 'https://soroban-testnet.stellar.org',
       AIDLINE_CONTRACT_ID: '',
