@@ -21,8 +21,10 @@ async function expectRateLimit(send: () => Promise<Sent>, limit: number) {
 
   const blocked = await send();
   expect(blocked.statusCode).toBe(429);
-  expect(blocked.json()).toMatchObject({ error: 'rate_limited' });
-  expect(blocked.json().message).toBeTypeOf('string');
+  expect(blocked.json()).toEqual({
+    error: 'rate_limited',
+    message: expect.any(String),
+  });
   expect(blocked.headers['retry-after']).toBeDefined();
   expect(blocked.headers['x-request-id']).toBeTruthy();
 }

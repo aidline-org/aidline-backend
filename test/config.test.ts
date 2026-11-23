@@ -36,6 +36,11 @@ describe('loadConfig', () => {
     expect(config.INDEXER_POLL_MS).toBe(5000);
   });
 
+  it('accepts an optional metrics bearer token', () => {
+    expect(loadConfig({ METRICS_TOKEN: 'metrics-secret' }).METRICS_TOKEN).toBe('metrics-secret');
+    expect(loadConfig({}).METRICS_TOKEN).toBeUndefined();
+  });
+
   it('removes a trailing slash from PUBLIC_BASE_URL', () => {
     expect(loadConfig({ PUBLIC_BASE_URL: 'https://api.example.org/' }).PUBLIC_BASE_URL).toBe(
       'https://api.example.org',

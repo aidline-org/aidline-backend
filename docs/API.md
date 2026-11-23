@@ -54,7 +54,7 @@ Returns `503` when the database cannot be reached (`checks.database` is `unavail
 
 ### `GET /metrics`
 
-Prometheus text format, for scraping by Prometheus, Grafana Agent or any compatible tool. Set `METRICS_ENABLED=false` to turn it off. It is not part of the OpenAPI spec.
+Prometheus text format, for scraping by Prometheus, Grafana Agent or any compatible tool. Set `METRICS_ENABLED=false` to turn it off. When `METRICS_TOKEN` is set, send it as `Authorization: Bearer <token>`; without it, metrics remain publicly accessible. It is not part of the OpenAPI spec.
 
 | Metric                                  | Type      | Labels                      | Meaning                                                                                           |
 | --------------------------------------- | --------- | --------------------------- | ------------------------------------------------------------------------------------------------- |
