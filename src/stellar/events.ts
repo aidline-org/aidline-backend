@@ -5,6 +5,7 @@ interface EventBase {
   ledger: number;
   txHash: string;
   closedAt: Date;
+  contractId: string;
 }
 
 export type AidlineEvent = EventBase &
@@ -21,6 +22,8 @@ export type AidlineEvent = EventBase &
     | { type: 'campaign_cancelled'; campaignId: bigint }
     | { type: 'refunded'; campaignId: bigint; donor: string; amount: bigint }
     | { type: 'verifier_updated'; verifier: string; active: boolean }
+    | { type: 'admin_added'; admin: string }
+    | { type: 'admin_removed'; admin: string }
     | {
         type: 'pledge_created';
         campaignId: bigint;
@@ -62,6 +65,7 @@ export function decodeEvent(ev: rpc.Api.EventResponse): AidlineEvent | null {
     ledger: ev.ledger,
     txHash: ev.txHash,
     closedAt: new Date(ev.ledgerClosedAt),
+    contractId: String(ev.contractId ?? ''),
   };
 
   switch (topics[0]) {
@@ -74,7 +78,11 @@ export function decodeEvent(ev: rpc.Api.EventResponse): AidlineEvent | null {
         type: 'donated',
         campaignId: BigInt(topics[1]),
         donor: String(topics[2]),
-        amount: BigInt(typeof data === 'object' && !Array.isArray(data) && 'amount' in data ? data.amount as bigint : scValToNative(ev.value)),
+        amount: BigInt(
+          typeof data === 'object' && !Array.isArray(data) && 'amount' in data
+            ? (data.amount as bigint)
+            : scValToNative(ev.value),
+        ),
       };
     case 'released':
     case 'milestone_released':
@@ -83,12 +91,22 @@ export function decodeEvent(ev: rpc.Api.EventResponse): AidlineEvent | null {
         type: 'milestone_released',
         campaignId: BigInt(topics[1]),
         index: topics[0] === 'released' ? Number(topics[2]) : Number(data.index),
-        amount: BigInt(topics[0] === 'released' ? (data as unknown as unknown[])[0] : data.amount as bigint),
-        proofUri: String(topics[0] === 'released' ? (data as unknown as unknown[])[1] : data.proof_uri),
+        amount: BigInt(
+          topics[0] === 'released' ? (data as unknown as unknown[])[0] : (data.amount as bigint),
+        ),
+        proofUri: String(
+          topics[0] === 'released' ? (data as unknown as unknown[])[1] : data.proof_uri,
+        ),
       };
     case 'canceled':
     case 'campaign_cancelled':
       return { ...base, type: 'campaign_cancelled', campaignId: BigInt(topics[1]) };
+    case 'admin_added':
+    case 'admin_add':
+      return { ...base, type: 'admin_added', admin: String(topics[1] ?? data.admin) };
+    case 'admin_removed':
+    case 'admin_remove':
+      return { ...base, type: 'admin_removed', admin: String(topics[1] ?? data.admin) };
     case 'refunded':
       return {
         ...base,

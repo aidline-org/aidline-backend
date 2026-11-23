@@ -53,13 +53,34 @@ export async function upsertCampaign(
 export async function recordEvent(client: PoolClient, ev: AidlineEvent): Promise<void> {
   const common = [ev.eventId, ev.ledger, ev.txHash, ev.closedAt] as const;
 
+  await client.query(
+    `INSERT INTO indexed_events (event_id, contract_id, event_type, ledger, tx_hash, payload, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+    [
+      ev.eventId,
+      ev.contractId,
+      ev.type,
+      ev.ledger,
+      ev.txHash,
+      JSON.stringify(ev, (_k, v) => (typeof v === 'bigint' ? v.toString() : v)),
+      ev.closedAt,
+    ],
+  );
+
   switch (ev.type) {
     case 'sponsor_pool_deposited':
       await client.query(
         `INSERT INTO sponsor_pool_deposits
          (event_id, ledger, tx_hash, created_at, campaign_id, sponsor, amount, ratio_bps, cap)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`,
-        [...common, ev.campaignId.toString(), ev.sponsor, ev.amount.toString(), ev.ratioBps, ev.cap.toString()],
+        [
+          ...common,
+          ev.campaignId.toString(),
+          ev.sponsor,
+          ev.amount.toString(),
+          ev.ratioBps,
+          ev.cap.toString(),
+        ],
       );
       return;
     case 'sponsor_pool_matched':
@@ -67,7 +88,14 @@ export async function recordEvent(client: PoolClient, ev: AidlineEvent): Promise
         `INSERT INTO sponsor_pool_matches
          (event_id, ledger, tx_hash, created_at, campaign_id, sponsor, donor, donation_amount, matched_amount)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`,
-        [...common, ev.campaignId.toString(), ev.sponsor, ev.donor, ev.donationAmount.toString(), ev.matchedAmount.toString()],
+        [
+          ...common,
+          ev.campaignId.toString(),
+          ev.sponsor,
+          ev.donor,
+          ev.donationAmount.toString(),
+          ev.matchedAmount.toString(),
+        ],
       );
       return;
     case 'sponsor_pool_returned':
@@ -128,6 +156,28 @@ export async function recordEvent(client: PoolClient, ev: AidlineEvent): Promise
     }
 
     case 'campaign_cancelled':
+      await client.query(
+        `UPDATE campaigns SET status='cancelled', cancelled_ledger=$2, cancelled_tx_hash=$3,
+         cancelled_at=$4, updated_at=now() WHERE id=$1`,
+        [ev.campaignId.toString(), ev.ledger, ev.txHash, ev.closedAt],
+      );
+      return;
+
+    case 'admin_added':
+    case 'admin_removed':
+      await client.query(
+        `INSERT INTO admin_changes (event_id, contract_id, admin, action, ledger, tx_hash, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+        [
+          ev.eventId,
+          ev.contractId,
+          ev.admin,
+          ev.type === 'admin_added' ? 'added' : 'removed',
+          ev.ledger,
+          ev.txHash,
+          ev.closedAt,
+        ],
+      );
       return;
 
     case 'verifier_updated':

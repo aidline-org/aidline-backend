@@ -1,0 +1,226 @@
+{
+  "campaign_metadata": {
+    "id": "uuid",
+    "title": "text",
+    "summary": "text",
+    "description": "text",
+    "location": "text",
+    "category": "text",
+    "image_url": "text",
+    "created_at": "timestamp with time zone",
+    "organizer": "text",
+    "search_vector": "tsvector"
+  },
+  "campaign_refresh_queue": {
+    "campaign_id": "bigint",
+    "last_error_at": "timestamp with time zone",
+    "last_attempt_at": "timestamp with time zone",
+    "warned": "boolean"
+  },
+  "campaigns": {
+    "id": "bigint",
+    "creator": "text",
+    "beneficiary": "text",
+    "verifier": "text",
+    "kind": "text",
+    "metadata_uri": "text",
+    "metadata_id": "uuid",
+    "goal": "numeric",
+    "deadline": "timestamp with time zone",
+    "milestones": "ARRAY",
+    "milestones_released": "integer",
+    "raised": "numeric",
+    "released": "numeric",
+    "status": "text",
+    "created_ledger": "integer",
+    "created_at": "timestamp with time zone",
+    "updated_at": "timestamp with time zone",
+    "ttl_extended_ledger": "integer",
+    "created_event_id": "text"
+  },
+  "daily_stats_snapshots": {
+    "snapshot_date": "date",
+    "campaigns": "integer",
+    "active_campaigns": "integer",
+    "total_donated": "numeric",
+    "total_released": "numeric",
+    "total_refunded": "numeric",
+    "donors": "integer",
+    "verifiers": "integer",
+    "milestones_verified": "integer",
+    "created_at": "timestamp with time zone"
+  },
+  "donations": {
+    "event_id": "text",
+    "campaign_id": "bigint",
+    "donor": "text",
+    "amount": "numeric",
+    "ledger": "integer",
+    "tx_hash": "text",
+    "created_at": "timestamp with time zone"
+  },
+  "emergency_advances": {
+    "event_id": "text",
+    "campaign_id": "bigint",
+    "verifier": "text",
+    "milestone_index": "integer",
+    "amount": "numeric",
+    "ledger": "integer",
+    "tx_hash": "text",
+    "created_at": "timestamp with time zone"
+  },
+  "gdacs_alerts": {
+    "id": "text",
+    "event_type": "text",
+    "severity": "text",
+    "title": "text",
+    "location": "text",
+    "country": "text",
+    "url": "text",
+    "description": "text",
+    "published_at": "timestamp with time zone",
+    "raw": "jsonb",
+    "fetched_at": "timestamp with time zone"
+  },
+  "indexer_state": {
+    "id": "integer",
+    "cursor": "text",
+    "last_ledger": "integer",
+    "latest_ledger": "integer",
+    "updated_at": "timestamp with time zone"
+  },
+  "milestone_releases": {
+    "event_id": "text",
+    "campaign_id": "bigint",
+    "index": "integer",
+    "amount": "numeric",
+    "proof_uri": "text",
+    "proof_id": "uuid",
+    "ledger": "integer",
+    "tx_hash": "text",
+    "created_at": "timestamp with time zone"
+  },
+  "pending_campaign_events": {
+    "event_id": "text",
+    "campaign_id": "bigint",
+    "payload": "jsonb",
+    "created_at": "timestamp with time zone"
+  },
+  "pledge_events": {
+    "event_id": "text",
+    "event_type": "text",
+    "pledge_id": "bigint",
+    "campaign_id": "bigint",
+    "donor": "text",
+    "amount": "numeric",
+    "reason": "integer",
+    "milestone_index": "integer",
+    "ledger": "integer",
+    "tx_hash": "text",
+    "created_at": "timestamp with time zone"
+  },
+  "pledges": {
+    "pledge_id": "bigint",
+    "campaign_id": "bigint",
+    "donor": "text",
+    "pledged_amount": "numeric",
+    "pulled_amount": "numeric",
+    "status": "text",
+    "skipped_reason": "integer",
+    "settled_at": "timestamp with time zone",
+    "updated_at": "timestamp with time zone"
+  },
+  "proofs": {
+    "id": "uuid",
+    "campaign_id": "bigint",
+    "milestone_index": "integer",
+    "note": "text",
+    "files": "jsonb",
+    "created_at": "timestamp with time zone"
+  },
+  "refunds": {
+    "event_id": "text",
+    "campaign_id": "bigint",
+    "donor": "text",
+    "amount": "numeric",
+    "ledger": "integer",
+    "tx_hash": "text",
+    "created_at": "timestamp with time zone"
+  },
+  "schema_migrations": {
+    "name": "text",
+    "applied_at": "timestamp with time zone"
+  },
+  "sponsor_pool_deposits": {
+    "event_id": "text",
+    "ledger": "integer",
+    "tx_hash": "text",
+    "created_at": "timestamp with time zone",
+    "campaign_id": "bigint",
+    "sponsor": "text",
+    "amount": "numeric",
+    "ratio_bps": "integer",
+    "cap": "numeric"
+  },
+  "sponsor_pool_matches": {
+    "event_id": "text",
+    "ledger": "integer",
+    "tx_hash": "text",
+    "created_at": "timestamp with time zone",
+    "campaign_id": "bigint",
+    "sponsor": "text",
+    "donor": "text",
+    "donation_amount": "numeric",
+    "matched_amount": "numeric"
+  },
+  "sponsor_pool_returns": {
+    "event_id": "text",
+    "ledger": "integer",
+    "tx_hash": "text",
+    "created_at": "timestamp with time zone",
+    "campaign_id": "bigint",
+    "sponsor": "text",
+    "amount": "numeric"
+  },
+  "verifier_bond_events": {
+    "event_id": "text",
+    "event_type": "text",
+    "verifier": "text",
+    "campaign_id": "bigint",
+    "amount": "numeric",
+    "ledger": "integer",
+    "tx_hash": "text",
+    "created_at": "timestamp with time zone"
+  },
+  "verifiers": {
+    "address": "text",
+    "active": "boolean",
+    "org_name": "text",
+    "website": "text",
+    "country": "text",
+    "description": "text",
+    "applied_at": "timestamp with time zone",
+    "updated_at": "timestamp with time zone",
+    "bond_amount": "numeric",
+    "ever_slashed": "boolean",
+    "deregistered_at": "timestamp with time zone"
+  },
+  "webhook_deliveries": {
+    "id": "uuid",
+    "subscription_id": "uuid",
+    "event_id": "text",
+    "campaign_id": "bigint",
+    "payload": "jsonb",
+    "attempts": "integer",
+    "status": "text",
+    "next_attempt_at": "timestamp with time zone",
+    "last_error": "text",
+    "created_at": "timestamp with time zone"
+  },
+  "webhook_subscriptions": {
+    "id": "uuid",
+    "campaign_id": "bigint",
+    "url": "text",
+    "created_at": "timestamp with time zone"
+  }
+}

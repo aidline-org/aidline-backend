@@ -1,15 +1,6 @@
 import type { Db } from '../db/pool.js';
 
-/**
- * Represents the shape of one daily snapshot row, as returned by
- * `snapshotStats` and by `GET /stats/history`.
- *
- * Financial amounts are strings, `NUMERIC(39,0)` values from Postgres are
- * returned as strings by the type parsers in `db/pool.ts` so they never pass
- * through a JS number.
- */
-export interface DailySnapshot {
-  snapshotDate: string; // ISO date string, e.g. "2026-10-08"
+export interface PlatformStats {
   campaigns: number;
   activeCampaigns: number;
   totalDonated: string;
@@ -21,41 +12,77 @@ export interface DailySnapshot {
 }
 
 /**
+ * Represents the shape of one daily snapshot row, as returned by
+ * `snapshotStats` and by `GET /stats/history`.
+ *
+ * Financial amounts are strings, `NUMERIC(39,0)` values from Postgres are
+ * returned as strings by the type parsers in `db/pool.ts` so they never pass
+ * through a JS number.
+ */
+export interface DailySnapshot extends PlatformStats {
+  snapshotDate: string; // ISO date string, e.g. "2026-10-08"
+}
+
+const STATS_QUERY = `SELECT
+  (SELECT count(*)::int FROM campaigns) AS campaigns,
+  (SELECT count(*)::int FROM campaigns WHERE status = 'active' AND deadline >= now())
+    AS "activeCampaigns",
+  (SELECT COALESCE(sum(raised), 0) FROM campaigns) AS "totalDonated",
+  (SELECT COALESCE(sum(released), 0) FROM campaigns) AS "totalReleased",
+  (SELECT COALESCE(sum(amount), 0) FROM refunds) AS "totalRefunded",
+  (SELECT count(DISTINCT donor)::int FROM donations) AS donors,
+  (SELECT count(*)::int FROM verifiers WHERE active) AS verifiers,
+  (SELECT count(*)::int FROM milestone_releases) AS "milestonesVerified"`;
+
+export async function getPlatformStats(db: Db): Promise<PlatformStats> {
+  const { rows } = await db.query<PlatformStats>(STATS_QUERY);
+  return rows[0] as PlatformStats;
+}
+
+/**
  * Captures the current platform statistics and stores them as a snapshot for
  * today's UTC date.
  *
- * The calculation is identical to `GET /stats` so the two endpoints can never
- * diverge.  The INSERT uses ON CONFLICT DO NOTHING so calling this function
- * more than once per day is a safe no-op (idempotent).
+ * The calculation is shared with `GET /stats` through `getPlatformStats` so the
+ * two endpoints can never diverge.  The INSERT uses an upsert so today's row
+ * always reflects the latest run while past days remain unchanged.
  *
  * @param db   The Postgres pool.
  * @param date The UTC date to snapshot. Defaults to today (UTC). Exposed as a
  *             parameter so tests can inject a specific date without patching
  *             the clock.
- * @returns    `true` if a new row was inserted, `false` if the snapshot for
- *             this date already existed (idempotent run).
+ * @returns    `true` if a row was inserted or updated.
  */
 export async function snapshotStats(db: Db, date?: string): Promise<boolean> {
   // Default to today's UTC date in ISO format (YYYY-MM-DD).
   const snapshotDate = date ?? new Date().toISOString().slice(0, 10);
+  const stats = await getPlatformStats(db);
 
   const result = await db.query(
     `INSERT INTO daily_stats_snapshots
        (snapshot_date, campaigns, active_campaigns, total_donated,
         total_released, total_refunded, donors, verifiers, milestones_verified)
-     SELECT
-       $1::date,
-       (SELECT count(*)::int              FROM campaigns)            AS campaigns,
-       (SELECT count(*)::int              FROM campaigns
-          WHERE status = 'active' AND deadline >= now())             AS active_campaigns,
-       (SELECT COALESCE(sum(raised), 0)   FROM campaigns)            AS total_donated,
-       (SELECT COALESCE(sum(released), 0) FROM campaigns)            AS total_released,
-       (SELECT COALESCE(sum(amount), 0)   FROM refunds)              AS total_refunded,
-       (SELECT count(DISTINCT donor)::int FROM donations)            AS donors,
-       (SELECT count(*)::int              FROM verifiers WHERE active) AS verifiers,
-       (SELECT count(*)::int              FROM milestone_releases)   AS milestones_verified
-     ON CONFLICT (snapshot_date) DO NOTHING`,
-    [snapshotDate],
+     VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8, $9)
+     ON CONFLICT (snapshot_date) DO UPDATE SET
+       campaigns = EXCLUDED.campaigns,
+       active_campaigns = EXCLUDED.active_campaigns,
+       total_donated = EXCLUDED.total_donated,
+       total_released = EXCLUDED.total_released,
+       total_refunded = EXCLUDED.total_refunded,
+       donors = EXCLUDED.donors,
+       verifiers = EXCLUDED.verifiers,
+       milestones_verified = EXCLUDED.milestones_verified`,
+    [
+      snapshotDate,
+      stats.campaigns,
+      stats.activeCampaigns,
+      stats.totalDonated,
+      stats.totalReleased,
+      stats.totalRefunded,
+      stats.donors,
+      stats.verifiers,
+      stats.milestonesVerified,
+    ],
   );
 
   return (result.rowCount ?? 0) > 0;
@@ -98,16 +125,13 @@ export async function getStatsHistory(db: Db): Promise<DailySnapshot[]> {
 }
 
 /**
- * Starts a lightweight daily snapshot scheduler using `setInterval`.
+ * Starts a lightweight snapshot scheduler using `setInterval`.
  *
  * The application has no existing job framework, so we use the smallest
- * architecture-consistent mechanism: a plain Node.js timer that fires every
- * 24 hours.  On startup it also immediately attempts a snapshot for today so
- * the history is never missing the current day.
+ * architecture-consistent mechanism: a plain Node.js timer. It runs hourly so
+ * today's row stays current; upserts keep past days unchanged.
  *
  * The timer reference is returned so the caller can clear it on shutdown.
- *
- * The scheduler does not install any new dependency.
  *
  * @param db  Postgres pool.
  * @param log Logger (Fastify-compatible, exposes .info / .warn / .error).
@@ -122,12 +146,8 @@ export function startDailySnapshotScheduler(
 ): NodeJS.Timeout {
   const take = async () => {
     try {
-      const inserted = await snapshotStats(db);
-      if (inserted) {
-        log.info('daily stats snapshot taken');
-      } else {
-        log.info('daily stats snapshot already exists for today, skipped');
-      }
+      await snapshotStats(db);
+      log.info('daily stats snapshot updated');
     } catch (err) {
       log.error({ err }, 'daily stats snapshot failed');
     }
@@ -136,7 +156,7 @@ export function startDailySnapshotScheduler(
   // Take a snapshot immediately (catch-up for the current day).
   void take();
 
-  // Schedule subsequent snapshots every 24 hours.
-  const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
-  return setInterval(() => void take(), TWENTY_FOUR_HOURS);
+  // Keep today's snapshot current; past days are never changed by the upsert.
+  const ONE_HOUR = 60 * 60 * 1000;
+  return setInterval(() => void take(), ONE_HOUR);
 }

@@ -28,7 +28,7 @@ export async function setupApp() {
     ADMIN_WALLET_ADDRESS: adminKeypair.publicKey(),
     UPLOAD_DIR: mkdtempSync(join(tmpdir(), 'aidline-uploads-')),
   });
-  const db = createPool(config.DATABASE_URL);
+  const db = createPool(config.DATABASE_URL, config.DATABASE_POOL_MAX);
   await migrate(db, () => {});
   await resetDb(db);
   const app = await buildApp(config, db, { logger: false });
@@ -142,14 +142,14 @@ export const events = {
       ]),
     ),
   donated: (id: bigint, donor: string, amount: bigint) =>
-    rawEvent(
-      [sym('donated'), u64(id), addr(donor)],
-      nativeToScVal(amount, { type: 'i128' }),
-    ),
+    rawEvent([sym('donated'), u64(id), addr(donor)], nativeToScVal(amount, { type: 'i128' })),
   released: (id: bigint, index: number, amount: bigint, proofUri: string) =>
     rawEvent(
       [sym('released'), u64(id), nativeToScVal(index, { type: 'u32' })],
-      xdr.ScVal.scvVec([nativeToScVal(amount, { type: 'i128' }), nativeToScVal(proofUri, { type: 'string' })]),
+      xdr.ScVal.scvVec([
+        nativeToScVal(amount, { type: 'i128' }),
+        nativeToScVal(proofUri, { type: 'string' }),
+      ]),
     ),
   refunded: (id: bigint, donor: string, amount: bigint) =>
     rawEvent(
@@ -159,8 +159,5 @@ export const events = {
   reassigned: (id: bigint, oldVerifier: string, newVerifier: string) =>
     rawEvent([sym('vf_reass'), u64(id)], xdr.ScVal.scvVec([addr(oldVerifier), addr(newVerifier)])),
   verifier: (verifier: string, active: boolean) =>
-    rawEvent(
-      [sym('verifier'), addr(verifier)],
-      xdr.ScVal.scvBool(active),
-    ),
+    rawEvent([sym('verifier'), addr(verifier)], xdr.ScVal.scvBool(active)),
 };

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 
-import { getStatsHistory } from '../indexer/stats.js';
+import { getPlatformStats, getStatsHistory } from '../indexer/stats.js';
 import { setCacheHeaders } from '../lib/cache.js';
 import { amount, nullableDateTime, nullableInteger } from '../lib/openapi.js';
 
@@ -23,6 +23,43 @@ const INDEXER_STALE_MS = 60_000;
 const STATS_CACHE_KEY = 'stats';
 
 export async function metaRoutes(app: FastifyInstance) {
+  app.get(
+    '/admin',
+    {
+      schema: {
+        tags: ['platform'],
+        summary: 'Current indexed admin set and change history',
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              admins: { type: 'array', items: { type: 'string' } },
+              changes: { type: 'array' },
+            },
+          },
+        },
+      },
+    },
+    async () => {
+      const { rows } = await app.db.query<{
+        admin: string;
+        action: 'added' | 'removed';
+        contract_id: string;
+        ledger: number;
+        tx_hash: string;
+        created_at: string | Date;
+      }>(
+        `SELECT admin, action, contract_id, ledger, tx_hash, created_at
+         FROM admin_changes ORDER BY created_at ASC, ledger ASC, event_id ASC`,
+      );
+      const admins = new Set<string>();
+      for (const row of rows) {
+        if (row.action === 'added') admins.add(row.admin);
+        else admins.delete(row.admin);
+      }
+      return { admins: [...admins].sort(), changes: rows };
+    },
+  );
   // Kept for backwards compatibility with existing monitors.
   // #3: report indexer lag (difference between the chain's latest ledger and the indexed ledger)
   app.get(
@@ -187,19 +224,7 @@ export async function metaRoutes(app: FastifyInstance) {
       setCacheHeaders(reply, cached !== undefined);
       if (cached !== undefined) return cached;
 
-      const { rows } = await app.db.query(
-        `SELECT
-         (SELECT count(*)::int FROM campaigns) AS campaigns,
-         (SELECT count(*)::int FROM campaigns WHERE status = 'active' AND deadline >= now())
-           AS "activeCampaigns",
-         (SELECT COALESCE(sum(raised), 0) FROM campaigns) AS "totalDonated",
-         (SELECT COALESCE(sum(released), 0) FROM campaigns) AS "totalReleased",
-         (SELECT COALESCE(sum(amount), 0) FROM refunds) AS "totalRefunded",
-         (SELECT count(DISTINCT donor)::int FROM donations) AS donors,
-         (SELECT count(*)::int FROM verifiers WHERE active) AS verifiers,
-         (SELECT count(*)::int FROM milestone_releases) AS "milestonesVerified"`,
-      );
-      const stats = rows[0];
+      const stats = await getPlatformStats(app.db);
       app.cache.set(STATS_CACHE_KEY, stats);
       return stats;
     },

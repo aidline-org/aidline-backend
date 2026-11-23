@@ -45,6 +45,8 @@ export interface IndexerOptions {
   source: EventSource;
   contract: ContractReader;
   contractId: string;
+  /** All deployed contract ids whose history should be indexed. */
+  contractIds?: string[];
   startLedger?: number;
   pollMs: number;
   log: FastifyBaseLogger;
@@ -111,18 +113,24 @@ export class Indexer {
 
   /** Fetches and applies one page of events. Returns how many events were seen. */
   async syncOnce(): Promise<number> {
-    const { db, source, contractId } = this.opts;
+    const { db, source } = this.opts;
     const state = await db.query<{ cursor: string | null }>(
       'SELECT cursor FROM indexer_state WHERE id = 1',
     );
     const cursor = state.rows[0]?.cursor ?? null;
-    const filters: rpc.Api.EventFilter[] = [{ type: 'contract', contractIds: [contractId] }];
+    const contractIds = this.opts.contractIds?.length
+      ? this.opts.contractIds
+      : [this.opts.contractId];
+    const filters: rpc.Api.EventFilter[] = [{ type: 'contract', contractIds }];
 
     let res: rpc.Api.GetEventsResponse;
     try {
       if (!cursor) {
         const start = await this.startLedger();
-        this.opts.log.info({ startLedger: start.ledger, source: start.source }, 'indexer starting from ledger on fresh database');
+        this.opts.log.info(
+          { startLedger: start.ledger, source: start.source },
+          'indexer starting from ledger on fresh database',
+        );
         res = await source.getEvents({ startLedger: start.ledger, filters, limit: PAGE_SIZE });
       } else {
         res = await source.getEvents({ cursor, filters, limit: PAGE_SIZE });
@@ -164,7 +172,13 @@ export class Indexer {
             );
             await client.query(
               'INSERT INTO pending_campaign_events (event_id, campaign_id, payload) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
-              [ev.eventId, ev.campaignId.toString(), JSON.stringify(ev, (_key, value: unknown) => typeof value === 'bigint' ? value.toString() : value)],
+              [
+                ev.eventId,
+                ev.campaignId.toString(),
+                JSON.stringify(ev, (_key, value: unknown) =>
+                  typeof value === 'bigint' ? value.toString() : value,
+                ),
+              ],
             );
             continue;
           }
@@ -373,14 +387,22 @@ export class Indexer {
         );
         const replayed: AidlineEvent[] = [];
         for (const { payload } of pending.rows) {
-          const ev = { ...payload, campaignId: id, closedAt: new Date(payload.closedAt) } as AidlineEvent;
+          const ev = {
+            ...payload,
+            campaignId: id,
+            closedAt: new Date(payload.closedAt),
+          } as AidlineEvent;
           if ('amount' in ev) ev.amount = BigInt(ev.amount);
           if ('campaignId' in ev && ev.type === 'milestone_released') ev.amount = BigInt(ev.amount);
           await recordEvent(client, ev);
           replayed.push(ev);
         }
-        await client.query('DELETE FROM pending_campaign_events WHERE campaign_id = $1', [row.campaign_id]);
-        await client.query('DELETE FROM campaign_refresh_queue WHERE campaign_id = $1', [row.campaign_id]);
+        await client.query('DELETE FROM pending_campaign_events WHERE campaign_id = $1', [
+          row.campaign_id,
+        ]);
+        await client.query('DELETE FROM campaign_refresh_queue WHERE campaign_id = $1', [
+          row.campaign_id,
+        ]);
         await client.query('COMMIT');
         this.warnedCampaigns.delete(row.campaign_id);
         this.publish(replayed);
@@ -427,10 +449,21 @@ export class Indexer {
     }
   }
 
-  private async startLedger(): Promise<{ ledger: number; source: 'configured' | 'default' | 'rpc_oldest' }> {
+  private async startLedger(): Promise<{
+    ledger: number;
+    source: 'configured' | 'default' | 'rpc_oldest';
+  }> {
     const { oldestLedger, latestLedger } = await this.opts.source.getHealth();
     const wanted = this.opts.startLedger ?? latestLedger - 1000;
     // RPC only keeps recent history. Starting before that is an error.
-    return { ledger: Math.max(wanted, oldestLedger), source: wanted < oldestLedger ? 'rpc_oldest' : this.opts.startLedger !== undefined ? 'configured' : 'default' };
+    return {
+      ledger: Math.max(wanted, oldestLedger),
+      source:
+        wanted < oldestLedger
+          ? 'rpc_oldest'
+          : this.opts.startLedger !== undefined
+            ? 'configured'
+            : 'default',
+    };
   }
 }

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { gzip } from 'node:zlib';
 import { promisify } from 'node:util';
 
@@ -60,8 +61,10 @@ export async function buildApp(
   app.decorate('db', db);
   app.decorate('config', config);
   app.decorate('cache', new ResponseCache());
-  app.decorate('streams', new EventStreamHub(config.STREAM_MAX_CLIENTS));
   app.decorate('storage', createStorage(config));
+  // Routes validate input with zod. The JSON schemas on routes exist for the OpenAPI document
+  // and response serialization, so Fastify must not validate with them as well.
+  app.setValidatorCompiler(() => () => true);
 
   // Hardening headers (nosniff, frame-ancestors via X-Frame-Options, referrer policy, HSTS).
   // The CSP is off because this is a JSON API plus the Swagger UI, which needs inline scripts.
@@ -98,7 +101,10 @@ export async function buildApp(
         { name: 'donors', description: 'Donor profiles and donation history' },
         { name: 'alerts', description: 'Recent GDACS disaster alerts' },
         { name: 'webhooks', description: 'Milestone release webhook subscriptions' },
-        { name: 'events', description: 'Live stream of donations, releases, refunds and campaigns' },
+        {
+          name: 'events',
+          description: 'Live stream of donations, releases, refunds and campaigns',
+        },
       ],
     },
   });
@@ -118,7 +124,10 @@ export async function buildApp(
     const key = (req.params as { '*': string })['*'];
     const object = await app.storage.get(key);
     if (!object) return notFound(reply, 'file');
-    return reply.header('content-type', object.contentType).send(object.body);
+    return reply
+      .header('content-type', object.contentType)
+      .header('cache-control', 'public, max-age=31536000, immutable')
+      .send(object.body);
   });
 
   app.setErrorHandler((err, _req, reply) => {
