@@ -12,6 +12,7 @@
     "metadata:orphans": "tsx --env-file-if-exists=.env src/indexer/metadata-orphans.ts",
     "stats:backfill": "tsx --env-file-if-exists=.env src/indexer/stats-backfill.ts",
     "test": "vitest run",
+    "test:e2e:indexer": "tsx --env-file-if-exists=.env test/indexer-soroban.e2e.ts",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "lint": "eslint .",

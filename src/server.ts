@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { Keypair, rpc } from '@stellar/stellar-sdk';
 
 import { buildApp } from './app.js';
-import { loadConfig } from './config.js';
+import { contractIds, loadConfig } from './config.js';
 import { migrate } from './db/migrate.js';
 import { createPool, type Db } from './db/pool.js';
 import { Indexer } from './indexer/indexer.js';
@@ -97,7 +97,22 @@ async function main() {
     app.log.warn('indexer disabled: set AIDLINE_CONTRACT_ID to index contract events');
   }
 
-  const statsTimer = startDailySnapshotScheduler(db, app.log.child({ module: 'stats' }));
+  indexer = new Indexer({
+    db,
+    source: server,
+    contract: new AidlineContract(server, config.AIDLINE_CONTRACT_ID, config.networkPassphrase),
+    contractId: config.AIDLINE_CONTRACT_ID,
+    contractIds: contractIds(config),
+    startLedger: config.INDEXER_START_LEDGER,
+    pollMs: config.INDEXER_POLL_MS,
+    log: app.log.child({ module: 'indexer' }),
+    cache: app.cache,
+    onCommit: (events) => app.streams.publish(events),
+  });
+  indexer.start();
+} else {
+  app.log.warn('indexer disabled: set AIDLINE_CONTRACT_ID to index contract events');
+}
 
   const gdacsTimer = config.GDACS_ENABLED
     ? startGdacsScheduler(db, config.GDACS_FEED_URL, config.GDACS_POLL_MS, app.log.child({ module: 'gdacs' }))
