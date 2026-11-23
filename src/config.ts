@@ -17,6 +17,7 @@ const schema = z.object({
   PUBLIC_BASE_URL: z.url().default('http://localhost:4000'),
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
   DATABASE_URL: z.string().default('postgres://aidline:aidline@localhost:5433/aidline'),
+  DATABASE_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(0).default(5000),
   AIDLINE_NETWORK: z.enum(['testnet', 'mainnet', 'futurenet']).default('testnet'),
   AIDLINE_RPC_URL: z.url().default('https://soroban-testnet.stellar.org'),
   AIDLINE_CONTRACT_ID: z.string().default(''),

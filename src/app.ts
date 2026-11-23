@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { gzip } from 'node:zlib';
 import { promisify } from 'node:util';
 
@@ -59,8 +60,10 @@ export async function buildApp(
   app.decorate('db', db);
   app.decorate('config', config);
   app.decorate('cache', new ResponseCache());
-  app.decorate('streams', new EventStreamHub(config.STREAM_MAX_CLIENTS));
   app.decorate('storage', createStorage(config));
+  // Routes validate input with zod. The JSON schemas on routes exist for the OpenAPI document
+  // and response serialization, so Fastify must not validate with them as well.
+  app.setValidatorCompiler(() => () => true);
 
   // Hardening headers (nosniff, frame-ancestors via X-Frame-Options, referrer policy, HSTS).
   // The CSP is off because this is a JSON API plus the Swagger UI, which needs inline scripts.

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 import { Keypair } from '@stellar/stellar-sdk';
@@ -100,6 +101,87 @@ describe('API', () => {
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().issues.map((i: { path: string }) => i.path)).toContain('title');
+  });
+
+  describe('metadata field limits', () => {
+    // [field, shortest and longest allowed length after trimming]
+    const limits: [keyof typeof metadata, number, number][] = [
+      ['title', 5, 120],
+      ['summary', 10, 280],
+      ['description', 20, 10_000],
+      ['location', 2, 120],
+      ['organizer', 2, 120],
+    ];
+
+    const create = (overrides: Record<string, unknown>) =>
+      app.inject({
+        method: 'POST',
+        url: '/metadata',
+        payload: { ...metadata, ...overrides },
+        headers: metadataHeaders(),
+      });
+
+    it.each(limits)('accepts %s at its limits', async (field, min, max) => {
+      for (const length of [min, max]) {
+        const res = await create({ [field]: 'x'.repeat(length) });
+        expect(res.statusCode).toBe(201);
+      }
+    });
+
+    it.each(limits)('rejects %s outside its limits', async (field, min, max) => {
+      for (const length of [min - 1, max + 1]) {
+        const res = await create({ [field]: 'x'.repeat(length) });
+        expect(res.statusCode).toBe(400);
+        expect(res.json().issues.map((i: { path: string }) => i.path)).toContain(field);
+      }
+    });
+
+    it('accepts a record without its optional fields and returns them as null', async () => {
+      const { title, summary, description, location } = metadata;
+      const res = await app.inject({
+        method: 'POST',
+        url: '/metadata',
+        payload: { title, summary, description, location },
+        headers: metadataHeaders(),
+      });
+      expect(res.statusCode).toBe(201);
+
+      const get = await app.inject({ url: `/metadata/${res.json().id}` });
+      expect(get.json()).toMatchObject({ organizer: null, category: null, imageUrl: null });
+    });
+
+    it('stores a valid imageUrl and returns it', async () => {
+      const imageUrl = 'https://example.org/clinic-roof.jpg';
+      const res = await create({ imageUrl });
+      expect(res.statusCode).toBe(201);
+
+      const get = await app.inject({ url: `/metadata/${res.json().id}` });
+      expect(get.json().imageUrl).toBe(imageUrl);
+    });
+
+    it('rejects an imageUrl that is not a URL', async () => {
+      const res = await create({ imageUrl: 'not a url' });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().issues.map((i: { path: string }) => i.path)).toContain('imageUrl');
+    });
+
+    it('rejects a category outside the fixed list', async () => {
+      const res = await create({ category: 'unknown' });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().issues.map((i: { path: string }) => i.path)).toContain('category');
+    });
+
+    it('returns 404 for a metadata id that was never created', async () => {
+      const res = await app.inject({ url: `/metadata/${randomUUID()}` });
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toEqual({ error: 'not_found', message: 'metadata not found' });
+    });
+
+    it('returns 400 for a metadata id that is not a UUID', async () => {
+      const res = await app.inject({ url: '/metadata/not-a-uuid' });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().issues.map((i: { path: string }) => i.path)).toContain('id');
+    });
   });
 
   it('serves indexed campaigns joined with their metadata', async () => {

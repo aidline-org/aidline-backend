@@ -9,6 +9,8 @@
     "start": "node --env-file-if-exists=.env dist/server.js",
     "migrate": "tsx --env-file-if-exists=.env src/db/migrate.ts",
     "reindex": "tsx --env-file-if-exists=.env src/indexer/reindex.ts",
+    "metadata:orphans": "tsx --env-file-if-exists=.env src/indexer/metadata-orphans.ts",
+    "stats:backfill": "tsx --env-file-if-exists=.env src/indexer/stats-backfill.ts",
     "test": "vitest run",
     "test:e2e:indexer": "tsx --env-file-if-exists=.env test/indexer-soroban.e2e.ts",
     "test:coverage": "vitest run --coverage",

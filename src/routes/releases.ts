@@ -4,6 +4,42 @@ import { setCacheHeaders } from '../lib/cache.js';
 import { pagination } from '../lib/http.js';
 import { amount, nullableString, paginationQuery } from '../lib/openapi.js';
 
+function toRelativePath(value: string): string | null {
+  if (!value) return null;
+  if (!/^https?:\/\//i.test(value)) return value.replace(/^\/+/, '');
+  try {
+    const url = new URL(value);
+    const match = url.pathname.match(/\/uploads\/(.+)$/);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeProofFiles<T>(proof: T, base: string): T {
+  if (!proof || typeof proof !== 'object') return proof;
+  const p = proof as Record<string, unknown>;
+  const files = p.files;
+  if (!Array.isArray(files)) return proof;
+  return {
+    ...p,
+    files: files.map((file) => {
+      if (!file || typeof file !== 'object') return file;
+      const f = file as Record<string, unknown>;
+      const url = typeof f.url === 'string' ? f.url : '';
+      const thumb = typeof f.thumbnailUrl === 'string' ? f.thumbnailUrl : '';
+      const key = toRelativePath(url);
+      const thumbKey = toRelativePath(thumb);
+      return {
+        ...f,
+        ...(key ? { url: `${base}/uploads/${key}` } : {}),
+        ...(thumbKey ? { thumbnailUrl: `${base}/uploads/${thumbKey}` } : {}),
+      };
+    }),
+  } as T;
+}
+
+
 const proofFile = {
   type: 'object',
   properties: {
@@ -78,7 +114,8 @@ export async function releaseRoutes(app: FastifyInstance) {
        LIMIT $1 OFFSET $2`,
         [q.limit, q.offset],
       );
-      const result = { items: rows };
+      const base = app.config.PUBLIC_BASE_URL;
+      const result = { items: rows.map((r) => ({ ...r, proof: r.proof ? normalizeProofFiles(r.proof, base) : null })) };
       app.cache.set(key, result);
       return result;
     },
