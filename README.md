@@ -103,6 +103,7 @@ Proof uploads are stored on local disk, which is not persistent on the free Rend
 
 - [API reference](docs/API.md)
 - [Architecture](docs/ARCHITECTURE.md): how the indexer stays consistent, data model, design decisions
+- [Glossary](docs/GLOSSARY.md): plain-language meanings of the terms used in the code and docs
 - [Deployment](docs/DEPLOYMENT.md): Render, Docker, mainnet checklist, troubleshooting
 - [Environment variables](docs/ENVIRONMENT.md): every setting, its default and what it does
 - [Decision records](docs/adr/README.md): why the backend is built the way it is
