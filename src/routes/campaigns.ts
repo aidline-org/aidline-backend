@@ -41,7 +41,9 @@ function normalizeProofFiles<T>(proof: T, base: string): T {
 }
 
 
-const campaignIdParam = z.object({ id: z.coerce.bigint() });
+const campaignIdParam = z.object({
+  id: z.string().regex(/^\\d+$/, 'campaign id must be a non-negative integer').transform(BigInt),
+});
 
 const SORT_MAP = {
   newest: 'c.created_at DESC',
