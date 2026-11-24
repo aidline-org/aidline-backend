@@ -56,6 +56,26 @@ export function registerMetrics(app: FastifyInstance) {
     'latest_ledger - last_ledger',
   );
 
+  // Indexed-event totals are read from the durable event table so restarts do
+  // not reset the counters. The unknown bucket makes newly deployed contract
+  // events visible without requiring a metrics code change first.
+  new Gauge({
+    name: 'aidline_indexed_events_total',
+    help: 'Indexed events by decoded event type',
+    labelNames: ['event_type'],
+    registers: [registry],
+    async collect() {
+      try {
+        const { rows } = await app.db.query<{ event_type: string; count: number }>(
+          'SELECT event_type, count(*)::int AS count FROM indexed_events GROUP BY event_type',
+        );
+        for (const row of rows) this.set({ event_type: row.event_type }, row.count);
+      } catch (err) {
+        app.log.warn({ err }, 'could not read indexed event totals for metrics');
+      }
+    },
+  });
+
   new Gauge({
     name: 'aidline_indexer_seconds_since_sync',
     help: 'Seconds elapsed since the last successful indexer sync (-1 when never synced)',
