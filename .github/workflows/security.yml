@@ -22,7 +22,7 @@ jobs:
       - name: Dependency review
         # Fails when the PR adds a dependency with a known high or critical advisory,
         # which includes packages GitHub has flagged as malware.
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
 
