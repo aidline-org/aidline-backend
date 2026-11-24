@@ -1,6 +1,6 @@
 import type { rpc } from '@stellar/stellar-sdk';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Db } from '../src/db/pool.js';
 import { Indexer, type EventSource } from '../src/indexer/indexer.js';
@@ -351,6 +351,89 @@ describe('Indexer', () => {
       // Cursor must not have been cleared
       const s = await db.query('SELECT cursor FROM indexer_state WHERE id = 1');
       expect(s.rows[0]!.cursor).toBe('stale');
+    });
+  });
+
+  describe('polling loop', () => {
+    // Only the loop's own timers are faked, and syncOnce is replaced by a spy.
+    // With no database I/O in between, each advance() lands exactly where the loop expects.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    });
+
+    /** Moves the fake clock, then lets the loop's promise chain run to its next await. */
+    async function advance(ms: number) {
+      await vi.advanceTimersByTimeAsync(ms);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+
+    it('polls again after pollMs when a page is not full', async () => {
+      const indexer = indexerFor(new FakeChain());
+      const sync = vi.spyOn(indexer, 'syncOnce').mockResolvedValue(0);
+
+      indexer.start();
+      await advance(0);
+      expect(sync).toHaveBeenCalledTimes(1);
+
+      await advance(999);
+      expect(sync).toHaveBeenCalledTimes(1);
+
+      await advance(1);
+      expect(sync).toHaveBeenCalledTimes(2);
+      await indexer.stop();
+    });
+
+    it('drains a full page without waiting for pollMs', async () => {
+      const indexer = indexerFor(new FakeChain());
+      // A full page of 100 means more events are waiting, so the next page follows at once.
+      const sync = vi.spyOn(indexer, 'syncOnce').mockResolvedValueOnce(100).mockResolvedValue(0);
+
+      indexer.start();
+      await advance(10);
+      expect(sync).toHaveBeenCalledTimes(2);
+
+      // The short page that follows goes back to the 1000 ms poll interval.
+      await advance(900);
+      expect(sync).toHaveBeenCalledTimes(2);
+
+      await advance(100);
+      expect(sync).toHaveBeenCalledTimes(3);
+      await indexer.stop();
+    });
+
+    it('runs nothing after stop()', async () => {
+      const indexer = indexerFor(new FakeChain());
+      const sync = vi.spyOn(indexer, 'syncOnce').mockResolvedValue(0);
+
+      indexer.start();
+      await advance(0);
+      await indexer.stop();
+
+      await advance(60_000);
+      expect(sync).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('schedules no further poll when stop() lands while a page is in flight', async () => {
+      const indexer = indexerFor(new FakeChain());
+      let finish!: (count: number) => void;
+      const sync = vi
+        .spyOn(indexer, 'syncOnce')
+        .mockImplementationOnce(() => new Promise<number>((resolve) => (finish = resolve)))
+        .mockResolvedValue(0);
+
+      indexer.start();
+      const stopping = indexer.stop();
+      finish(0);
+      await stopping;
+
+      await advance(60_000);
+      expect(sync).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
     });
   });
 });
