@@ -147,7 +147,23 @@ export class Indexer {
       throw err;
     }
 
-    const events = res.events.map(decodeEvent).filter((e): e is AidlineEvent => e !== null);
+    // Decode each event independently. A malformed or newly introduced
+    // event must be observable without aborting the rest of the page.
+    const decoded = res.events.map((raw) => {
+      try {
+        return { raw, event: decodeEvent(raw) };
+      } catch (err) {
+        this.opts.log.warn(
+          { err, eventId: raw.id, ledger: raw.ledger },
+          'failed to decode event; recording it as unknown',
+        );
+        return { raw, event: null };
+      }
+    });
+    const events = decoded
+      .map(({ event }) => event)
+      .filter((e): e is AidlineEvent => e !== null);
+    const unknown = decoded.filter(({ event }) => event === null).map(({ raw }) => raw);
     const campaigns = await this.fetchCampaigns(events);
 
     // While catching up (a full page), the indexer has only reached the last
@@ -160,6 +176,24 @@ export class Indexer {
     const recorded: AidlineEvent[] = [];
     try {
       await client.query('BEGIN');
+      for (const raw of unknown) {
+        this.opts.log.warn(
+          { eventId: raw.id, ledger: raw.ledger, contractId: raw.contractId },
+          'indexed event has an unknown type',
+        );
+        await client.query(
+          `INSERT INTO indexed_events (event_id, contract_id, event_type, ledger, tx_hash, payload, created_at)
+           VALUES ($1,$2,'unknown',$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
+          [
+            raw.id,
+            String(raw.contractId ?? ''),
+            raw.ledger,
+            raw.txHash,
+            JSON.stringify(raw),
+            new Date(raw.ledgerClosedAt),
+          ],
+        );
+      }
       for (const ev of events) {
         if ('campaignId' in ev) {
           const campaign = campaigns.get(ev.campaignId);
