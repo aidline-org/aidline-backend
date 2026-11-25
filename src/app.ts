@@ -55,9 +55,56 @@ export async function buildApp(
   db: Db,
   opts: FastifyServerOptions = { logger: true },
 ) {
-  // #140: the request id is generated here, never taken from the client, and the same value
-  // is sent in the X-Request-Id header and in every error body as `requestId`.
-  const app = Fastify({ genReqId: () => randomUUID(), requestIdHeader: false, ...opts });
+  const redactHeaders = [
+    'authorization',
+    'proxy-authorization',
+    'cookie',
+    'set-cookie',
+    'token',
+    'access-token',
+    'refresh-token',
+    'id-token',
+    'session-token',
+    'api-token',
+    'x-access-token',
+    'x-refresh-token',
+    'x-id-token',
+    'x-session-token',
+    'x-api-token',
+    'x-bearer-token',
+    'x-csrf-token',
+    'x-token',
+    'x-api-key',
+    'api-key',
+    'x-auth-token',
+  ];
+  const loggerOptions = typeof opts.logger === 'object' && opts.logger !== null ? opts.logger : {};
+  const logger =
+    opts.logger === false
+      ? false
+      : {
+          ...loggerOptions,
+          redact: {
+            paths: redactHeaders.flatMap((header) => [
+              `req.headers.${header}`,
+              `headers.${header}`,
+            ]),
+            censor: '[Redacted]',
+          },
+        };
+  // Accept a bounded, safe incoming ID; otherwise generate one. This same ID is used in
+  // response headers and completion logs.
+  const app = Fastify({
+    ...opts,
+    logger,
+    genReqId: (req) => {
+      const incomingId = req.headers['x-request-id'];
+      return typeof incomingId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(incomingId)
+        ? incomingId
+        : randomUUID();
+    },
+    requestIdHeader: false,
+  });
   app.decorate('db', db);
   app.decorate('config', config);
   app.decorate('cache', new ResponseCache());
@@ -80,6 +127,20 @@ export async function buildApp(
   await app.register(cors, { origin: config.corsOrigins });
   await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
   await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024, files: 5 } });
+
+  app.addHook('onResponse', (req, reply, done) => {
+    req.log.info(
+      {
+        reqId: req.id,
+        method: req.method,
+        route: req.routeOptions.url ?? 'unmatched',
+        status: reply.statusCode,
+        duration: reply.elapsedTime,
+      },
+      'request completed',
+    );
+    done();
+  });
 
   // OpenAPI spec, register before routes so all of them are picked up.
   await app.register(swagger, {
@@ -170,7 +231,7 @@ export async function buildApp(
     });
   });
 
-  // #11: attach a unique X-Request-Id header to every response
+  // Attach the request id to every response.
   app.addHook('onSend', (req, reply, _payload, done) => {
     if (!reply.hasHeader('x-request-id')) {
       reply.header('x-request-id', req.id);

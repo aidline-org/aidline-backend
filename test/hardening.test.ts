@@ -1,5 +1,6 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { Writable } from 'node:stream';
 
 import { Keypair } from '@stellar/stellar-sdk';
 import type { FastifyInstance } from 'fastify';
@@ -91,14 +92,62 @@ describe('request ids in error responses', () => {
     }
   });
 
-  it('gives every request its own id, never one supplied by the client', async () => {
+  it('reuses a valid incoming x-request-id and generates an id otherwise', async () => {
     const first = await app.inject({
       url: '/releases?limit=500',
-      headers: { 'request-id': 'mine' },
+      headers: { 'x-request-id': 'proxy-request-123' },
     });
-    const second = await app.inject({ url: '/releases?limit=500' });
-    expect(first.headers['x-request-id']).not.toBe('mine');
-    expect(first.json().requestId).not.toBe(second.json().requestId);
+    const second = await app.inject({
+      url: '/releases?limit=500',
+      headers: { 'x-request-id': 'invalid!id' },
+    });
+    expect(first.headers['x-request-id']).toBe('proxy-request-123');
+    expect(first.json().requestId).toBe('proxy-request-123');
+    expect(second.headers['x-request-id']).not.toBe('invalid!id');
+    expect(second.json().requestId).toBe(second.headers['x-request-id']);
+  });
+});
+
+describe('request logging', () => {
+  it('redacts sensitive headers and logs request metadata without the body', async () => {
+    const lines: string[] = [];
+    const stream = new Writable({
+      write(chunk, _encoding, callback) {
+        lines.push(chunk.toString());
+        callback();
+      },
+    });
+    const loggedApp = await buildApp(config, db, { logger: { stream } });
+    loggedApp.get('/test/logging', (req) => {
+      req.log.info({ headers: req.headers }, 'captured request headers');
+      return { note: 'response body is not logged' };
+    });
+
+    try {
+      const secret = 'header-secret-value';
+      const res = await loggedApp.inject({
+        url: '/test/logging',
+        headers: { authorization: `Bearer ${secret}`, 'x-request-id': 'log-request-1' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(lines.join('')).toContain('[Redacted]');
+      expect(lines.join('')).not.toContain(secret);
+      expect(lines.join('')).not.toContain('response body is not logged');
+
+      const completion = lines
+        .map((line) => JSON.parse(line))
+        .find((line) => line.msg === 'request completed');
+      expect(completion).toMatchObject({
+        reqId: 'log-request-1',
+        method: 'GET',
+        route: '/test/logging',
+        status: 200,
+      });
+      expect(completion.duration).toBeTypeOf('number');
+      expect(completion).not.toHaveProperty('body');
+    } finally {
+      await loggedApp.close();
+    }
   });
 });
 
@@ -317,5 +366,30 @@ describe('GET /metrics', () => {
     const res = await off.inject({ url: '/metrics' });
     expect(res.statusCode).toBe(404);
     await off.close();
+  });
+
+  it('requires a bearer token when METRICS_TOKEN is set', async () => {
+    const secured = await buildApp(
+      { ...config, METRICS_TOKEN: 'metrics-secret' },
+      db,
+      { logger: false },
+    );
+    try {
+      const denied = await secured.inject({ url: '/metrics' });
+      expect(denied.statusCode).toBe(401);
+      expect(denied.json()).toEqual({
+        error: 'unauthorized',
+        message: 'Metrics authorization required',
+      });
+
+      const allowed = await secured.inject({
+        url: '/metrics',
+        headers: { authorization: 'Bearer metrics-secret' },
+      });
+      expect(allowed.statusCode).toBe(200);
+      expect(allowed.body).toContain('process_cpu_user_seconds_total');
+    } finally {
+      await secured.close();
+    }
   });
 });

@@ -29,6 +29,7 @@ const schema = z.object({
   INDEXER_POLL_MS: z.coerce.number().int().min(1000).default(5000),
   INDEXER_ENABLED: bool,
   METRICS_ENABLED: bool,
+  METRICS_TOKEN: z.string().optional(),
   UPLOAD_DIR: z.string().default('uploads'),
 
   // Proof storage. `local` is the default; `s3` works with any S3 compatible provider.

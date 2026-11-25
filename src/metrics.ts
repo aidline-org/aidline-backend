@@ -1,3 +1,5 @@
+import { timingSafeEqual } from 'node:crypto';
+
 import type { FastifyInstance } from 'fastify';
 import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from 'prom-client';
 
@@ -80,7 +82,24 @@ export function registerMetrics(app: FastifyInstance) {
     duration.observe({ method: req.method, route }, reply.elapsedTime / 1000);
   });
 
-  app.get('/metrics', { schema: { hide: true } }, async (_req, reply) => {
+  app.get('/metrics', { schema: { hide: true } }, async (req, reply) => {
+    const expectedToken = app.config.METRICS_TOKEN;
+    if (expectedToken) {
+      const match = /^Bearer ([^\s]+)$/i.exec(req.headers.authorization ?? '');
+      const supplied = match?.[1];
+      const expectedBytes = Buffer.from(expectedToken);
+      const suppliedBytes = Buffer.from(supplied ?? '');
+      if (
+        !supplied ||
+        suppliedBytes.length !== expectedBytes.length ||
+        !timingSafeEqual(suppliedBytes, expectedBytes)
+      ) {
+        return reply.code(401).send({
+          error: 'unauthorized',
+          message: 'Metrics authorization required',
+        });
+      }
+    }
     reply.header('content-type', registry.contentType);
     return registry.metrics();
   });
