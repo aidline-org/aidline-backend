@@ -6,10 +6,11 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import type { Db } from '../src/db/pool.js';
 import { createThumbnail, imageKind, pngThumbnail } from '../src/lib/images.js';
-import { setupApp } from './helpers.js';
+import { seedCampaign, setupApp } from './helpers.js';
 
 const photo = readFileSync(new URL('./fixtures/photo.png', import.meta.url));
 const { app, db } = (await setupApp()) as { app: FastifyInstance; db: Db };
+await seedCampaign(db);
 
 function upload(file: Buffer, type = 'image/png', filename = 'photo.png') {
   const boundary = '----aidline';

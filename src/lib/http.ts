@@ -21,6 +21,12 @@ export const writeRateLimits = {
   verifierApplications: { max: 10, timeWindow: '1 minute' },
 };
 
+/**
+ * Body limit for JSON write routes. The largest valid body is metadata with a 10,000 character
+ * description (up to ~40 KB as UTF-8); Fastify's 1 MB default only helps someone loading the server.
+ */
+export const JSON_BODY_LIMIT = 64 * 1024;
+
 export function notFound(reply: FastifyReply, what: string) {
   return reply.code(404).send({ error: 'not_found', message: `${what} not found` });
 }

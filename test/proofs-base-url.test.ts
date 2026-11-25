@@ -5,7 +5,7 @@ import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { migrate } from '../src/db/migrate.js';
 import { createPool, type Db } from '../src/db/pool.js';
-import { MAGIC, multipartBody, resetDb, setupApp } from './helpers.js';
+import { MAGIC, multipartBody, resetDb, seedCampaign, setupApp } from './helpers.js';
 
 const { app, db, config } = (await setupApp()) as {
   app: FastifyInstance;
@@ -20,6 +20,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await resetDb(db);
+  await seedCampaign(db);
 });
 
 function uploadRequest() {

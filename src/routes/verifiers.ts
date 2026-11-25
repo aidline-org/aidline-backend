@@ -2,10 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { verifySignedRequest } from '../lib/auth.js';
-import { pagination, stellarAddress, writeRateLimits } from '../lib/http.js';
+import { JSON_BODY_LIMIT, pagination, stellarAddress, writeRateLimits } from '../lib/http.js';
 import { amount, errorResponse, nullableDateTime, nullableString } from '../lib/openapi.js';
 
-const application = z.object({
+const application = z.strictObject({
   address: stellarAddress,
   orgName: z.string().trim().min(2).max(120),
   website: z.url().optional(),
@@ -126,6 +126,7 @@ export async function verifierRoutes(app: FastifyInstance) {
   app.post(
     '/verifiers/applications',
     {
+      bodyLimit: JSON_BODY_LIMIT,
       config: { rateLimit: writeRateLimits.verifierApplications },
       schema: {
         tags: ['verifiers'],

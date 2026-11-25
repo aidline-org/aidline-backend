@@ -2,9 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import type { Db } from '../src/db/pool.js';
-import { account, setupApp } from './helpers.js';
+import { account, seedCampaign, setupApp } from './helpers.js';
 
 const { app, db } = (await setupApp()) as { app: FastifyInstance; db: Db };
+await seedCampaign(db);
 
 type Sent = Awaited<ReturnType<typeof app.inject>>;
 

@@ -230,6 +230,8 @@ describe('API', () => {
   });
 
   it('attaches uploaded proofs to released milestones', async () => {
+    const campaign = chainCampaign();
+    await index(campaign, [events.created(0n, campaign.creator)]);
     const content = Buffer.concat([MAGIC['image/png'], Buffer.from('PNGDATA')]);
     const { payload, headers } = multipartBody([
       { name: 'campaignId', value: '0' },
@@ -242,10 +244,7 @@ describe('API', () => {
     const proof = upload.json();
     expect(proof.files[0].url).toMatch(/\/uploads\/proofs\/.+\/0\.png$/);
 
-    await index(campaign, [
-      events.created(0n, campaign.creator),
-      events.released(0n, 0, 300n, proof.uri),
-    ]);
+    await index(campaign, [events.released(0n, 0, 300n, proof.uri)]);
 
     const detail = (await app.inject({ url: '/campaigns/0' })).json();
     expect(detail.milestones[0]).toMatchObject({
