@@ -29,6 +29,10 @@ src/
 test/                  vitest suites against a throwaway Postgres
 ```
 
+## Data model
+
+Every table and column, the migrations that create them, and the code that writes and reads each table are described in [SCHEMA.md](SCHEMA.md).
+
 ## How the indexer stays correct
 
 1. **Cursor based paging.** On a fresh database the indexer starts at `INDEXER_START_LEDGER` (clamped to the oldest ledger the RPC still keeps), then follows the cursor returned by `getEvents`.

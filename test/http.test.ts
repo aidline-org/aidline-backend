@@ -122,3 +122,84 @@ describe('error handler', () => {
     expect(res.body).not.toContain('hunter2');
   });
 });
+
+describe('error responses are JSON', () => {
+  let app: FastifyInstance;
+  let db: Db;
+
+  beforeAll(async () => {
+    ({ app, db } = (await setupApp()) as { app: FastifyInstance; db: Db });
+
+    app.post('/test/echo', async (req) => z.object({ name: z.string() }).parse(req.body));
+    // A route with its own limit of one request a minute, so the 429 is easy to reach.
+    app.get(
+      '/test/once',
+      { config: { rateLimit: { max: 1, timeWindow: '1 minute' } } },
+      async () => ({ ok: true }),
+    );
+  });
+
+  afterAll(async () => {
+    await app.close();
+    await db.end();
+  });
+
+  it.each([
+    {
+      name: '400 from a schema error',
+      send: () => app.inject({ method: 'POST', url: '/test/echo', payload: {} }),
+      status: 400,
+      error: 'validation_error',
+    },
+    {
+      name: '400 from a body that is not JSON',
+      send: () =>
+        app.inject({
+          method: 'POST',
+          url: '/test/echo',
+          payload: '{',
+          headers: { 'content-type': 'application/json' },
+        }),
+      status: 400,
+      error: 'request_error',
+    },
+    {
+      name: '404 for an unknown route',
+      send: () => app.inject({ url: '/no-such-route' }),
+      status: 404,
+      error: 'not_found',
+    },
+    {
+      name: '404 for a missing file under /uploads/',
+      send: () => app.inject({ url: '/uploads/proofs/missing/0.png' }),
+      status: 404,
+      error: 'not_found',
+    },
+    {
+      name: '413 for a body over the 1 MB limit',
+      send: () =>
+        app.inject({
+          method: 'POST',
+          url: '/test/echo',
+          payload: JSON.stringify({ name: 'x'.repeat(1_100_000) }),
+          headers: { 'content-type': 'application/json' },
+        }),
+      status: 413,
+      error: 'request_error',
+    },
+  ])('replies with JSON for $name', async ({ send, status, error }) => {
+    const res = await send();
+    expect(res.statusCode).toBe(status);
+    expect(res.headers['content-type']).toMatch(/^application\/json/);
+    expect(res.json()).toMatchObject({ error, message: expect.any(String) });
+  });
+
+  it('replies 429 with the same JSON shape once a route limit is used up', async () => {
+    expect((await app.inject({ url: '/test/once' })).statusCode).toBe(200);
+
+    const res = await app.inject({ url: '/test/once' });
+    expect(res.statusCode).toBe(429);
+    expect(res.headers['content-type']).toMatch(/^application\/json/);
+    expect(res.json()).toMatchObject({ error: 'rate_limited', message: expect.any(String) });
+  });
+});
