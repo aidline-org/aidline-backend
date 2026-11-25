@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import type { Db } from '../src/db/pool.js';
-import { MAGIC, multipartBody, setupApp } from './helpers.js';
+import { account, MAGIC, multipartBody, setupApp } from './helpers.js';
 
 const { app, db, config } = (await setupApp()) as {
   app: FastifyInstance;
@@ -24,7 +24,7 @@ beforeAll(async () => {
     `INSERT INTO campaigns
        (id, creator, beneficiary, verifier, kind, metadata_uri, goal, deadline,
         milestones, status, created_ledger, created_at)
-     VALUES ('0', $1, $1, $2, 'emergency', 'ipfs://x', '1000', now(), '{}', 'active', 1, now())
+     VALUES ('0', $1, $1, $2, 'emergency', 'ipfs://x', '1000', now(), '{500,500}', 'active', 1, now())
      ON CONFLICT (id) DO NOTHING`,
     [account(), proofSigner.publicKey()],
   );
@@ -299,6 +299,35 @@ describe('proof upload limits and cleanup', () => {
     expect(await storedFiles(config.UPLOAD_DIR)).toEqual(before);
   });
 
+  it.each([
+    ['a campaign that does not exist', '99999', '0', /does not exist/],
+    ['a milestone index past the last milestone', '0', '2', /no milestone 2/],
+  ])(
+    'rejects %s and removes the uploaded file',
+    async (_case, campaignId, milestoneIndex, message) => {
+      const before = await storedFiles(config.UPLOAD_DIR);
+      const { payload, headers } = multipartBody([
+        png(),
+        { name: 'campaignId', value: campaignId },
+        { name: 'milestoneIndex', value: milestoneIndex },
+        { name: 'note', value: 'Water tanks delivered to 3 camps' },
+      ]);
+      const res = await app.inject({
+        method: 'POST',
+        url: '/proofs',
+        payload,
+        headers,
+        remoteAddress: '10.0.0.3',
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({
+        error: 'invalid_target',
+        message: expect.stringMatching(message),
+      });
+      expect(await storedFiles(config.UPLOAD_DIR)).toEqual(before);
+    },
+  );
+
   it('rejects a file whose bytes do not match its declared type and stores nothing', async () => {
     const before = await storedFiles(config.UPLOAD_DIR);
     const { payload, headers } = multipartBody([
@@ -315,6 +344,82 @@ describe('proof upload limits and cleanup', () => {
     expect(res.json()).toMatchObject({ error: 'invalid_file' });
     expect(await storedFiles(config.UPLOAD_DIR)).toEqual(before);
   });
+});
+
+describe('proof display names', () => {
+  async function storedName(filename: string, type = 'image/png'): Promise<string> {
+    const { payload, headers } = multipartBody([
+      { name: 'campaignId', value: '0' },
+      { name: 'milestoneIndex', value: '0' },
+      { name: 'note', value: 'Water tanks delivered to 3 camps' },
+      {
+        name: 'files',
+        filename,
+        contentType: type,
+        content: Buffer.concat([MAGIC['image/png'], Buffer.from('DATA')]),
+      },
+    ]);
+    const upload = await app.inject({
+      method: 'POST',
+      url: '/proofs',
+      payload,
+      headers,
+      remoteAddress: '10.0.0.2',
+    });
+    expect(upload.statusCode).toBe(201);
+    return upload.json().files[0].name;
+  }
+
+  it('trims a very long name to 100 characters', async () => {
+    expect(await storedName(`${'a'.repeat(5000)}.png`)).toBe('a'.repeat(100));
+  });
+
+  it('removes control characters and path separators', async () => {
+    // Busboy already drops everything up to the last path separator, so only the tail arrives.
+    expect(await storedName('../x\\na\u0007me\u001b\u007f.png')).toBe('name.png');
+  });
+
+  it('falls back to a numbered name when nothing is left', async () => {
+    expect(await storedName('\u0001\u0002 ')).toBe('file-1.png');
+  });
+});
+
+describe('strict JSON write bodies', () => {
+  const metadata = {
+    title: 'Flood relief for Kogi',
+    summary: 'Clean water and shelter for displaced families.',
+    description: 'Water tanks, tarpaulins and food for families displaced by the flood.',
+    location: 'Lokoja, Nigeria',
+  };
+  const applicationBody = {
+    address: account(),
+    orgName: 'Red Relief Network',
+    country: 'Nigeria',
+    description: 'Field verification partner for flood response in Kogi state.',
+  };
+
+  it.each([
+    ['/metadata', { ...metadata, imageURL: 'https://example.org/x.png' }, 'imageURL'],
+    ['/verifiers/applications', { ...applicationBody, webSite: 'https://example.org' }, 'webSite'],
+  ])('rejects a misspelt field on %s and names it', async (url, payload, field) => {
+    const res = await app.inject({ method: 'POST', url, payload });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'validation_error' });
+    expect(JSON.stringify(res.json().issues)).toContain(field);
+  });
+
+  it.each(['/metadata', '/verifiers/applications'])(
+    'rejects an oversized body on %s with 413',
+    async (url) => {
+      const res = await app.inject({
+        method: 'POST',
+        url,
+        payload: { ...metadata, description: 'x'.repeat(100_000) },
+      });
+      expect(res.statusCode).toBe(413);
+      expect(res.json()).toMatchObject({ error: 'request_error', message: expect.any(String) });
+    },
+  );
 });
 
 describe('GET /metrics', () => {
@@ -369,11 +474,9 @@ describe('GET /metrics', () => {
   });
 
   it('requires a bearer token when METRICS_TOKEN is set', async () => {
-    const secured = await buildApp(
-      { ...config, METRICS_TOKEN: 'metrics-secret' },
-      db,
-      { logger: false },
-    );
+    const secured = await buildApp({ ...config, METRICS_TOKEN: 'metrics-secret' }, db, {
+      logger: false,
+    });
     try {
       const denied = await secured.inject({ url: '/metrics' });
       expect(denied.statusCode).toBe(401);

@@ -4,10 +4,10 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { CATEGORIES } from '../lib/categories.js';
-import { notFound, writeRateLimits } from '../lib/http.js';
+import { JSON_BODY_LIMIT, notFound, writeRateLimits } from '../lib/http.js';
 import { errorResponse } from '../lib/openapi.js';
 
-const body = z.object({
+const body = z.strictObject({
   title: z.string().trim().min(5).max(120),
   summary: z.string().trim().min(10).max(280),
   description: z.string().trim().min(20).max(10_000),
@@ -26,26 +26,30 @@ export async function metadataRoutes(app: FastifyInstance) {
   /** The fixed category list, so the frontend can build its picker from one source. */
   app.get('/categories', async () => ({ items: CATEGORIES }));
 
-  app.post('/metadata', { config: { rateLimit: writeRateLimits.metadata } }, async (req, reply) => {
-    const m = body.parse(req.body);
-    const id = randomUUID();
-    await app.db.query(
-      `INSERT INTO campaign_metadata
+  app.post(
+    '/metadata',
+    { bodyLimit: JSON_BODY_LIMIT, config: { rateLimit: writeRateLimits.metadata } },
+    async (req, reply) => {
+      const m = body.parse(req.body);
+      const id = randomUUID();
+      await app.db.query(
+        `INSERT INTO campaign_metadata
          (id, title, summary, description, location, organizer, category, image_url)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [
-        id,
-        m.title,
-        m.summary,
-        m.description,
-        m.location,
-        m.organizer ?? null,
-        m.category ?? null,
-        m.imageUrl ?? null,
-      ],
-    );
-    return reply.code(201).send({ id, uri: `${app.config.PUBLIC_BASE_URL}/metadata/${id}` });
-  });
+        [
+          id,
+          m.title,
+          m.summary,
+          m.description,
+          m.location,
+          m.organizer ?? null,
+          m.category ?? null,
+          m.imageUrl ?? null,
+        ],
+      );
+      return reply.code(201).send({ id, uri: `${app.config.PUBLIC_BASE_URL}/metadata/${id}` });
+    },
+  );
 
   app.get('/metadata/:id', async (req, reply) => {
     const { id } = z.object({ id: z.uuid() }).parse(req.params);

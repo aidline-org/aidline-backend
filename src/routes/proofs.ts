@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Readable } from 'node:stream';
+import type { Readable } from 'node:stream';
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -7,6 +7,12 @@ import { z } from 'zod';
 import { notFound, writeRateLimits } from '../lib/http.js';
 import { detectMimeType, HEADER_BYTES } from '../lib/magic.js';
 
+/**
+ * Allowed upload types and the file extension each is stored with. The extension comes from this
+ * table, never from the uploaded filename: the static file server picks the response content type
+ * from the extension, so a file named `x.html` sent as `image/png` would otherwise be served as
+ * HTML from this origin.
+ */
 const EXTENSIONS: Record<string, string> = {
   'image/jpeg': '.jpg',
   'image/png': '.png',
@@ -14,8 +20,21 @@ const EXTENSIONS: Record<string, string> = {
   'application/pdf': '.pdf',
 };
 const MAX_FILES = 5;
+const MAX_NAME_LENGTH = 100;
 
-const fieldsSchema = z.object({
+/**
+ * The original file name is shown to every visitor of the campaign page, so keep it short and drop
+ * control characters and path separators. An empty result falls back to `file-<n><ext>`.
+ */
+function displayName(raw: string, position: number, extension: string): string {
+  const cleaned = Array.from(raw.replace(/[\p{Cc}\\/]/gu, '').trim())
+    .slice(0, MAX_NAME_LENGTH)
+    .join('')
+    .trim();
+  return cleaned || `file-${position + 1}${extension}`;
+}
+
+const fields = z.object({
   campaignId: z.coerce.bigint().nonnegative(),
   milestoneIndex: z.coerce.number().int().min(0),
   note: z.string().trim().min(10).max(2000),
@@ -43,7 +62,6 @@ export async function proofRoutes(app: FastifyInstance) {
     const files: { name: string; url: string; size: number; type: string }[] = [];
     // Keys written by this request. Whatever is still listed when it fails is removed.
     const written: string[] = [];
-    const dir = join(app.config.UPLOAD_DIR, 'proofs', id);
 
     try {
       for await (const part of req.parts()) {
@@ -60,9 +78,9 @@ export async function proofRoutes(app: FastifyInstance) {
           });
         }
 
-        const { header, collected } = await readHeader(part.file, HEADER_BYTES);
-        if (detectMimeType(header) !== part.mimetype) {
-          part.file.resume();
+        // The declared mimetype is untrusted. Check the real bytes before storing.
+        const body = await readAll(part.file);
+        if (detectMimeType(body.subarray(0, HEADER_BYTES)) !== part.mimetype) {
           return reply.code(400).send({
             error: 'invalid_file',
             message: 'File contents do not match the declared type',
@@ -74,7 +92,7 @@ export async function proofRoutes(app: FastifyInstance) {
         await app.storage.put(key, body, part.mimetype);
         written.push(key);
         files.push({
-          name: part.filename,
+          name: displayName(part.filename, files.length, extension),
           type: part.mimetype,
           size: body.length,
           url: `${app.config.PUBLIC_BASE_URL}/uploads/${key}`,
@@ -82,42 +100,39 @@ export async function proofRoutes(app: FastifyInstance) {
       }
 
       const f = fields.parse(raw);
+      const { rows } = await app.db.query<{ milestones: number }>(
+        'SELECT cardinality(milestones) AS milestones FROM campaigns WHERE id = $1',
+        [f.campaignId.toString()],
+      );
+      if (!rows[0] || f.milestoneIndex >= rows[0].milestones) {
+        return reply.code(400).send({
+          error: 'invalid_target',
+          message: rows[0]
+            ? `Campaign ${f.campaignId} has no milestone ${f.milestoneIndex}`
+            : `Campaign ${f.campaignId} does not exist`,
+        });
+      }
       await app.db.query(
         `INSERT INTO proofs (id, campaign_id, milestone_index, note, files)
          VALUES ($1, $2, $3, $4, $5)`,
         [id, f.campaignId.toString(), f.milestoneIndex, f.note, JSON.stringify(files)],
       );
+      written.length = 0;
       return reply.code(201).send({ id, uri: `${app.config.PUBLIC_BASE_URL}/proofs/${id}`, files });
-    } catch (err) {
-      await Promise.all(written.map((path) => unlink(path).catch(() => undefined)));
-      throw err;
+    } finally {
+      // Anything still listed here belongs to a rejected upload.
+      await Promise.all(written.map((key) => app.storage.delete(key)));
     }
   });
 
   app.get('/proofs/:id', async (req, reply) => {
     const { id } = z.object({ id: z.uuid() }).parse(req.params);
-    const { rows } = await app.db.query<{
-      id: string;
-      campaignId: string;
-      milestoneIndex: number;
-      note: string;
-      files: Record<string, unknown>[] | string;
-      createdAt: Date;
-    }>(
+    const { rows } = await app.db.query(
       `SELECT id, campaign_id AS "campaignId", milestone_index AS "milestoneIndex", note, files,
               created_at AS "createdAt"
        FROM proofs WHERE id = $1`,
       [id],
     );
-    const row = rows[0];
-    if (!row) return notFound(reply, 'proof');
-    const rawFiles = typeof row.files === 'string' ? JSON.parse(row.files) : row.files;
-    const base = app.config.PUBLIC_BASE_URL;
-    return {
-      ...row,
-      files: (Array.isArray(rawFiles) ? rawFiles : []).map((file) =>
-        normalizeFile(file as Record<string, unknown>, base),
-      ),
-    };
+    return rows[0] ?? notFound(reply, 'proof');
   });
 }

@@ -43,6 +43,18 @@ export async function resetDb(db: Db) {
 
 export const account = () => Keypair.random().publicKey();
 
+/** Campaign 0 with two milestones, the target the proof upload tests use. */
+export async function seedCampaign(db: Db, verifier = account()) {
+  await db.query(
+    `INSERT INTO campaigns
+       (id, creator, beneficiary, verifier, kind, metadata_uri, goal, deadline,
+        milestones, status, created_ledger, created_at)
+     VALUES ('0', $1, $1, $2, 'emergency', 'ipfs://x', '1000', now(), '{500,500}', 'active', 1, now())
+     ON CONFLICT (id) DO NOTHING`,
+    [account(), verifier],
+  );
+}
+
 /** Minimal real magic bytes, enough for the upload validator to accept a file. */
 export const MAGIC = {
   'image/jpeg': Buffer.from([0xff, 0xd8, 0xff, 0xe0]),

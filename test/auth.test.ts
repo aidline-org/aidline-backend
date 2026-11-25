@@ -44,7 +44,7 @@ describe('wallet signature authentication', () => {
         `INSERT INTO campaigns
            (id, creator, beneficiary, verifier, kind, metadata_uri, goal, deadline,
             milestones, status, created_ledger, created_at)
-         VALUES ($1, $2, $2, $3, 'emergency', 'ipfs://x', '1000', now(), '{}', 'active', 1, now())`,
+         VALUES ($1, $2, $2, $3, 'emergency', 'ipfs://x', '1000', now(), '{500,500}', 'active', 1, now())`,
         [id, account(), verifier.publicKey()],
       );
     }
